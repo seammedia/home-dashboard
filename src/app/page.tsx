@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { 
   Home, Lightbulb, Flower2, DoorOpen, Wind, Camera, Blinds,
-  Moon, Sun, Power, Thermometer, Droplets, CloudSun
+  Moon, Thermometer, Droplets, Sofa, Bed, Baby, Gamepad2, UtensilsCrossed,
+  ChevronRight
 } from 'lucide-react';
 
 // Tab definitions
@@ -19,18 +20,38 @@ const TABS = [
 
 // Room definitions
 const ROOMS = [
-  { id: 'living', name: 'Living Room', icon: '🛋️', temp: '21.0°C', humidity: '49%', color: 'room-card-living' },
-  { id: 'bedroom', name: 'Bedroom', icon: '🛏️', temp: '19.5°C', humidity: '52%', color: 'room-card-bedroom' },
-  { id: 'kitchen', name: 'Kitchen', icon: '🍳', temp: '20.2°C', humidity: '45%', color: 'room-card-guest' },
-  { id: 'office', name: 'Office', icon: '💻', temp: '21.5°C', humidity: '48%', color: 'room-card-baby' },
+  { id: 'living', name: 'Living Room', icon: Sofa, temp: '21.0°C', humidity: '49%', color: 'from-yellow-500 to-amber-600' },
+  { id: 'master', name: 'Master Bedroom', icon: Bed, temp: '19.5°C', humidity: '52%', color: 'from-green-500 to-emerald-600' },
+  { id: 'ziggy', name: "Ziggy's Room", icon: Baby, temp: '20.0°C', humidity: '55%', color: 'from-lime-400 to-green-500' },
+  { id: 'nirvana', name: "Nirvana's Room", icon: Baby, temp: '20.2°C', humidity: '50%', color: 'from-teal-400 to-cyan-500' },
+  { id: 'playroom', name: 'Playroom', icon: Gamepad2, temp: '21.5°C', humidity: '48%', color: 'from-cyan-400 to-teal-500' },
+  { id: 'kitchen', name: 'Kitchen', icon: UtensilsCrossed, temp: '22.0°C', humidity: '45%', color: 'from-gray-500 to-gray-600' },
 ];
 
 // Light definitions
 const LIGHTS = [
   { id: 'living-main', name: 'Living Room', brightness: 80, on: true },
   { id: 'kitchen', name: 'Kitchen', brightness: 100, on: true },
-  { id: 'bedroom', name: 'Bedroom', brightness: 30, on: true },
-  { id: 'office', name: 'Office', brightness: 0, on: false },
+  { id: 'master', name: 'Master Bedroom', brightness: 30, on: true },
+  { id: 'ziggy', name: "Ziggy's Room", brightness: 0, on: false },
+  { id: 'nirvana', name: "Nirvana's Room", brightness: 0, on: false },
+  { id: 'playroom', name: 'Playroom', brightness: 50, on: true },
+];
+
+// Calendar events (placeholder)
+const CALENDAR_EVENTS = [
+  { day: 'Mon', date: '27', title: 'School Drop-off', time: '8:30 AM', color: 'bg-blue-500' },
+  { day: 'Tue', date: '28', title: 'Dentist', time: '2:00 PM', color: 'bg-pink-500' },
+  { day: 'Wed', date: '29', title: 'Swimming Lessons', time: '4:00 PM', color: 'bg-green-500' },
+  { day: 'Thu', date: '30', title: 'Work Meeting', time: '10:00 AM', color: 'bg-purple-500' },
+];
+
+// Camera feeds (placeholder)
+const CAMERAS = [
+  { id: 'driveway', name: 'Driveway' },
+  { id: 'backyard', name: 'Backyard' },
+  { id: 'front', name: 'Front Door' },
+  { id: 'garage', name: 'Garage' },
 ];
 
 export default function Dashboard() {
@@ -56,9 +77,9 @@ export default function Dashboard() {
       }));
       
       setCurrentDate(now.toLocaleDateString('en-AU', { 
-        weekday: 'short',
+        weekday: 'long',
         day: 'numeric',
-        month: 'short'
+        month: 'long'
       }));
     };
 
@@ -74,9 +95,7 @@ export default function Dashboard() {
   };
 
   const handleGoodNight = () => {
-    // Turn off all lights
     setLights(lights.map(light => ({ ...light, on: false, brightness: 0 })));
-    // TODO: Call Home Assistant API to turn off TV, etc.
     alert('Good Night! Turning off all lights and devices...');
   };
 
@@ -86,95 +105,150 @@ export default function Dashboard() {
       <main className="flex-1 p-4 pb-24 overflow-y-auto">
         {activeTab === 'home' && (
           <div className="space-y-4">
-            {/* Header */}
-            <div className="flex justify-between items-start">
-              <div>
-                <h1 className="text-2xl font-bold text-white">{greeting}</h1>
-                <p className="text-gray-400 text-sm">{currentDate}</p>
+            {/* Top Row: Greeting/Climate + Calendar */}
+            <div className="grid grid-cols-3 gap-4">
+              {/* Left: Greeting + Climate (2 cols) */}
+              <div className="col-span-2 space-y-4">
+                {/* Header with time */}
+                <div className="glass-card p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h1 className="text-2xl font-bold text-white">{greeting}</h1>
+                      <p className="text-gray-400 text-sm">{currentDate}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-3xl font-light text-white">{currentTime}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Climate Row */}
+                  <div className="flex items-center gap-6 mt-4 pt-4 border-t border-white/10">
+                    <div className="flex items-center gap-2">
+                      <Thermometer className="w-5 h-5 text-orange-400" />
+                      <div>
+                        <p className="text-xl font-semibold text-white">21.5°C</p>
+                        <p className="text-xs text-gray-500">Indoor</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Thermometer className="w-5 h-5 text-blue-400" />
+                      <div>
+                        <p className="text-xl font-semibold text-white">18°C</p>
+                        <p className="text-xs text-gray-500">Outdoor</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Droplets className="w-5 h-5 text-cyan-400" />
+                      <div>
+                        <p className="text-xl font-semibold text-white">52%</p>
+                        <p className="text-xs text-gray-500">Humidity</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Good Night Button */}
+                <button 
+                  onClick={handleGoodNight}
+                  className="w-full good-night-btn text-white py-5 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold"
+                >
+                  <Moon className="w-6 h-6" />
+                  Good Night
+                </button>
               </div>
-              <div className="text-right">
-                <p className="text-3xl font-light text-white">{currentTime}</p>
+
+              {/* Right: Calendar (1 col) */}
+              <div className="glass-card p-4">
+                <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Calendar</h2>
+                <div className="space-y-2">
+                  {CALENDAR_EVENTS.map((event, idx) => (
+                    <div key={idx} className="flex items-center gap-3">
+                      <div className="text-center w-10">
+                        <p className="text-xs text-gray-500">{event.day}</p>
+                        <p className="text-lg font-bold text-white">{event.date}</p>
+                      </div>
+                      <div className={`w-1 h-10 rounded-full ${event.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white font-medium truncate">{event.title}</p>
+                        <p className="text-xs text-gray-500">{event.time}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Good Night Button */}
-            <button 
-              onClick={handleGoodNight}
-              className="w-full good-night-btn text-white py-6 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold"
-            >
-              <Moon className="w-6 h-6" />
-              Good Night
-            </button>
-
-            {/* Climate Card */}
-            <div className="glass-card p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-gray-400 uppercase tracking-wider">Climate</span>
-                <CloudSun className="w-5 h-5 text-cyan-400" />
-              </div>
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <Thermometer className="w-5 h-5 text-orange-400" />
-                  <div>
-                    <p className="text-2xl font-semibold text-white">21.5°C</p>
-                    <p className="text-xs text-gray-500">Indoor</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Sun className="w-5 h-5 text-yellow-400" />
-                  <div>
-                    <p className="text-2xl font-semibold text-white">18°C</p>
-                    <p className="text-xs text-gray-500">Outdoor</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Droplets className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="text-2xl font-semibold text-white">52%</p>
-                    <p className="text-xs text-gray-500">Humidity</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Rooms Grid */}
+            {/* Rooms Row */}
             <div>
               <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Rooms</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {ROOMS.map((room) => (
-                  <div 
-                    key={room.id}
-                    className={`${room.color} p-4 rounded-2xl cursor-pointer hover:scale-[1.02] transition-transform`}
-                  >
-                    <div className="text-2xl mb-2">{room.icon}</div>
-                    <p className="font-semibold text-white text-sm">{room.name}</p>
-                    <p className="text-xs text-white/70">{room.temp} / {room.humidity}</p>
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
+                {ROOMS.map((room) => {
+                  const Icon = room.icon;
+                  return (
+                    <div 
+                      key={room.id}
+                      className={`flex-shrink-0 w-28 h-28 bg-gradient-to-br ${room.color} p-3 rounded-2xl cursor-pointer hover:scale-[1.02] transition-transform flex flex-col justify-between`}
+                    >
+                      <Icon className="w-6 h-6 text-white/90" />
+                      <div>
+                        <p className="font-semibold text-white text-xs leading-tight">{room.name}</p>
+                        <p className="text-[10px] text-white/70">{room.temp}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Cameras Row */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm text-gray-400 uppercase tracking-wider">Cameras</h2>
+                <button className="text-xs text-cyan-400 flex items-center gap-1">
+                  View All <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="grid grid-cols-4 gap-3">
+                {CAMERAS.map((camera) => (
+                  <div key={camera.id} className="glass-card aspect-video rounded-xl overflow-hidden relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                      <Camera className="w-8 h-8 text-gray-600" />
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-1">
+                      <p className="text-[10px] text-white truncate">{camera.name}</p>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Quick Lights */}
-            <div className="glass-card p-4">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-gray-400 uppercase tracking-wider">Lights</span>
-                <Lightbulb className="w-5 h-5 text-yellow-400" />
+            {/* Bottom Bento: Media + Quick Actions */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Media Player Placeholder */}
+              <div className="glass-card p-4">
+                <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Media</h2>
+                <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl flex items-center justify-center">
+                  <p className="text-gray-600 text-sm">No media playing</p>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {lights.map((light) => (
-                  <button
-                    key={light.id}
-                    onClick={() => toggleLight(light.id)}
-                    className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
-                      light.on 
-                        ? 'bg-yellow-500/20 border border-yellow-500/30' 
-                        : 'bg-white/5 border border-white/10'
-                    }`}
-                  >
-                    <div className={`w-3 h-3 rounded-full ${light.on ? 'bg-yellow-400' : 'bg-gray-600'}`} />
-                    <span className="text-sm text-white">{light.name}</span>
+
+              {/* Quick Actions Placeholder */}
+              <div className="glass-card p-4">
+                <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Quick Actions</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
+                    <p className="text-xs text-gray-400">Movie Mode</p>
                   </button>
-                ))}
+                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
+                    <p className="text-xs text-gray-400">All Lights Off</p>
+                  </button>
+                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
+                    <p className="text-xs text-gray-400">Away Mode</p>
+                  </button>
+                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
+                    <p className="text-xs text-gray-400">Party Mode</p>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -263,9 +337,17 @@ export default function Dashboard() {
         {activeTab === 'cameras' && (
           <div className="space-y-4">
             <h1 className="text-2xl font-bold text-white">Cameras</h1>
-            <div className="glass-card p-8 text-center">
-              <Camera className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-400">No cameras configured yet</p>
+            <div className="grid grid-cols-2 gap-4">
+              {CAMERAS.map((camera) => (
+                <div key={camera.id} className="glass-card aspect-video rounded-xl overflow-hidden relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                    <Camera className="w-12 h-12 text-gray-600" />
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-2">
+                    <p className="text-sm text-white">{camera.name}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
