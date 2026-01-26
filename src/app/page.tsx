@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { 
   Home, Lightbulb, Flower2, DoorOpen, Wind, Camera, Blinds,
   Moon, Thermometer, Droplets, Sofa, Bed, Baby, Gamepad2, UtensilsCrossed,
-  ChevronRight, ChevronLeft, Settings, Wifi, WifiOff, Loader2, Monitor
+  ChevronRight, ChevronLeft, Settings, Wifi, WifiOff, Loader2, Monitor,
+  Power
 } from 'lucide-react';
 import { useHomeAssistant } from '@/lib/useHomeAssistant';
 import { saveConfig, getConfig, testConnection } from '@/lib/homeassistant';
@@ -20,88 +21,106 @@ const TABS = [
   { id: 'blinds', label: 'Blinds', icon: Blinds },
 ];
 
-// Room definitions with light entity patterns
+// Room definitions with light entity patterns and placeholder images
 const ROOMS = [
   { 
     id: 'office', 
     name: 'Office', 
     icon: Monitor, 
     temp: '21.5°C', 
-    humidity: '45%', 
+    humidity: '45%',
+    outdoorHumidity: '62%',
     color: 'from-purple-500 to-indigo-600',
-    lightPatterns: ['office', 'upstairs_office']
+    lightPatterns: ['office', 'upstairs_office'],
+    layoutImage: '/rooms/office.png'
   },
   { 
     id: 'living', 
     name: 'Living Room', 
     icon: Sofa, 
     temp: '21.0°C', 
-    humidity: '49%', 
+    humidity: '49%',
+    outdoorHumidity: '94%',
     color: 'from-yellow-500 to-amber-600',
-    lightPatterns: ['living', 'tv_unit']
+    lightPatterns: ['living', 'tv_unit'],
+    layoutImage: '/rooms/living.png'
   },
   { 
     id: 'master', 
     name: 'Master Bedroom', 
     icon: Bed, 
     temp: '19.5°C', 
-    humidity: '52%', 
+    humidity: '52%',
+    outdoorHumidity: '65%',
     color: 'from-green-500 to-emerald-600',
-    lightPatterns: ['master_bedroom']
+    lightPatterns: ['master_bedroom'],
+    layoutImage: '/rooms/master.png'
   },
   { 
     id: 'bedroom', 
     name: 'Bedroom', 
     icon: Bed, 
     temp: '20.0°C', 
-    humidity: '50%', 
+    humidity: '50%',
+    outdoorHumidity: '65%',
     color: 'from-blue-500 to-cyan-600',
-    lightPatterns: ['bedroom_light']
+    lightPatterns: ['bedroom_light'],
+    layoutImage: '/rooms/bedroom.png'
   },
   { 
     id: 'ziggy', 
     name: "Ziggy's Room", 
     icon: Baby, 
     temp: '20.0°C', 
-    humidity: '55%', 
+    humidity: '55%',
+    outdoorHumidity: '65%',
     color: 'from-lime-400 to-green-500',
-    lightPatterns: ['ziggy']
+    lightPatterns: ['ziggy'],
+    layoutImage: '/rooms/kids.png'
   },
   { 
     id: 'nirvana', 
     name: "Nirvana's Room", 
     icon: Baby, 
     temp: '20.2°C', 
-    humidity: '50%', 
+    humidity: '50%',
+    outdoorHumidity: '65%',
     color: 'from-teal-400 to-cyan-500',
-    lightPatterns: ['nirvana']
+    lightPatterns: ['nirvana'],
+    layoutImage: '/rooms/kids.png'
   },
   { 
     id: 'playroom', 
     name: 'Playroom', 
     icon: Gamepad2, 
     temp: '21.5°C', 
-    humidity: '48%', 
+    humidity: '48%',
+    outdoorHumidity: '65%',
     color: 'from-cyan-400 to-teal-500',
-    lightPatterns: ['playroom']
+    lightPatterns: ['playroom'],
+    layoutImage: '/rooms/playroom.png'
   },
   { 
     id: 'kitchen', 
     name: 'Kitchen', 
     icon: UtensilsCrossed, 
     temp: '22.0°C', 
-    humidity: '45%', 
+    humidity: '45%',
+    outdoorHumidity: '65%',
     color: 'from-orange-500 to-red-600',
-    lightPatterns: ['kitchen']
+    lightPatterns: ['kitchen'],
+    layoutImage: '/rooms/kitchen.png'
   },
   { 
     id: 'other', 
     name: 'Other', 
     icon: Lightbulb, 
     temp: '-', 
-    humidity: '-', 
+    humidity: '-',
+    outdoorHumidity: '-',
     color: 'from-gray-500 to-gray-600',
-    lightPatterns: ['stairs', 'hue_go', 'bar']
+    lightPatterns: ['stairs', 'hue_go', 'bar'],
+    layoutImage: '/rooms/other.png'
   },
 ];
 
@@ -120,6 +139,68 @@ const CAMERAS = [
   { id: 'front', name: 'Front Door' },
   { id: 'garage', name: 'Garage' },
 ];
+
+// Light tile component for bento grid
+function LightTile({ 
+  light, 
+  onToggle, 
+  onBrightnessChange 
+}: { 
+  light: { entity_id: string; name: string; state: string; brightness: number; supports_brightness: boolean };
+  onToggle: () => void;
+  onBrightnessChange: (value: number) => void;
+}) {
+  const isOn = light.state === 'on';
+  
+  return (
+    <div 
+      className={`relative rounded-2xl p-4 transition-all ${
+        isOn 
+          ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-black' 
+          : 'bg-white/10 text-white'
+      }`}
+    >
+      <div className="flex items-start justify-between mb-2">
+        <Lightbulb className={`w-6 h-6 ${isOn ? 'text-black/70' : 'text-gray-400'}`} />
+        <button 
+          onClick={onToggle}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+            isOn ? 'bg-black/20 hover:bg-black/30' : 'bg-white/10 hover:bg-white/20'
+          }`}
+        >
+          <Power className="w-4 h-4" />
+        </button>
+      </div>
+      
+      <p className={`font-medium text-sm mb-3 ${isOn ? 'text-black' : 'text-white'}`}>
+        {light.name}
+      </p>
+      
+      {light.supports_brightness && (
+        <div className="space-y-1">
+          <input 
+            type="range" 
+            min="1" 
+            max="100" 
+            value={isOn ? light.brightness : 0}
+            onChange={(e) => onBrightnessChange(parseInt(e.target.value))}
+            className={`w-full h-2 rounded-full appearance-none cursor-pointer ${
+              isOn ? 'bg-black/20' : 'bg-white/20'
+            }`}
+            style={{
+              background: isOn 
+                ? `linear-gradient(to right, rgba(0,0,0,0.4) ${light.brightness}%, rgba(0,0,0,0.15) ${light.brightness}%)`
+                : `linear-gradient(to right, rgba(255,255,255,0.4) ${light.brightness}%, rgba(255,255,255,0.15) ${light.brightness}%)`
+            }}
+          />
+          <p className={`text-xs text-right ${isOn ? 'text-black/60' : 'text-gray-500'}`}>
+            {isOn ? `${light.brightness}%` : 'Off'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('home');
@@ -289,106 +370,204 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Room Detail View */}
+      {/* Room Detail View - Bento Layout */}
       {selectedRoom && currentRoom && (
         <div className="fixed inset-0 bg-gradient-mesh z-40 flex flex-col">
           {/* Room Header */}
-          <div className={`bg-gradient-to-r ${currentRoom.color} p-6`}>
-            <button 
-              onClick={() => setSelectedRoom(null)}
-              className="flex items-center gap-2 text-white/80 hover:text-white mb-4"
-            >
-              <ChevronLeft className="w-5 h-5" />
-              Back
-            </button>
+          <div className="p-4 pb-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <currentRoom.icon className="w-10 h-10 text-white" />
-                <div>
-                  <h1 className="text-2xl font-bold text-white">{currentRoom.name}</h1>
-                  <p className="text-white/70">{currentRoomLights.length} lights</p>
-                </div>
-              </div>
+              <button 
+                onClick={() => setSelectedRoom(null)}
+                className="flex items-center gap-2 text-gray-400 hover:text-white"
+              >
+                <ChevronLeft className="w-5 h-5" />
+                Back
+              </button>
               <button
                 onClick={() => turnOffRoomLights(selectedRoom)}
-                className="bg-black/20 hover:bg-black/30 text-white px-4 py-2 rounded-lg transition-colors"
+                className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors text-sm"
               >
                 All Off
               </button>
             </div>
+            
+            <div className="mt-4">
+              <h1 className="text-2xl font-bold text-white">{currentRoom.name}</h1>
+              <p className="text-gray-400 text-sm">
+                Currently {parseFloat(currentRoom.temp)}°C, with average forecast of 28.0°C
+              </p>
+            </div>
           </div>
 
-          {/* Room Content */}
+          {/* Bento Grid Content */}
           <div className="flex-1 p-4 overflow-y-auto pb-24">
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              {/* Temperature Card */}
-              <div className="glass-card p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <Thermometer className="w-5 h-5 text-orange-400" />
-                  <span className="text-gray-400 text-sm">Temperature</span>
+            <div className="grid grid-cols-12 gap-4">
+              
+              {/* LEFT: Lights Section (5 cols) */}
+              <div className="col-span-5 space-y-4">
+                <h2 className="text-sm text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <Lightbulb className="w-4 h-4" />
+                  Lights
+                </h2>
+                
+                {currentRoomLights.length === 0 ? (
+                  <div className="glass-card p-8 text-center">
+                    <Lightbulb className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                    <p className="text-gray-500 text-sm">No lights</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {currentRoomLights.map((light) => (
+                      <LightTile
+                        key={light.entity_id}
+                        light={light}
+                        onToggle={() => toggleLight(light.entity_id)}
+                        onBrightnessChange={(value) => setBrightness(light.entity_id, value)}
+                      />
+                    ))}
+                  </div>
+                )}
+                
+                {/* Other Lights section */}
+                <div className="mt-4">
+                  <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                    <ChevronRight className="w-3 h-3" />
+                    Other Lights - Tap here to expand
+                  </p>
                 </div>
-                <p className="text-3xl font-bold text-white">{currentRoom.temp}</p>
               </div>
 
-              {/* Humidity Card */}
-              <div className="glass-card p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <Droplets className="w-5 h-5 text-cyan-400" />
-                  <span className="text-gray-400 text-sm">Humidity</span>
-                </div>
-                <p className="text-3xl font-bold text-white">{currentRoom.humidity}</p>
-              </div>
-            </div>
-
-            {/* Lights Section */}
-            <div>
-              <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Lights</h2>
-              {currentRoomLights.length === 0 ? (
-                <div className="glass-card p-8 text-center">
-                  <Lightbulb className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-400">No lights in this room</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {currentRoomLights.map((light) => (
-                    <div key={light.entity_id} className="glass-card p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <Lightbulb className={`w-5 h-5 ${light.state === 'on' ? 'text-yellow-400' : 'text-gray-600'}`} />
-                          <span className="text-white font-medium">{light.name}</span>
-                        </div>
-                        <button 
-                          onClick={() => toggleLight(light.entity_id)}
-                          className={`w-12 h-6 rounded-full transition-colors ${
-                            light.state === 'on' ? 'bg-yellow-500' : 'bg-gray-700'
-                          }`}
-                        >
-                          <div className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                            light.state === 'on' ? 'translate-x-6' : 'translate-x-0.5'
-                          }`} />
-                        </button>
-                      </div>
-                      {light.state === 'on' && light.supports_brightness && (
-                        <div className="flex items-center gap-3">
-                          <input 
-                            type="range" 
-                            min="1" 
-                            max="100" 
-                            value={light.brightness}
-                            onChange={(e) => setBrightness(light.entity_id, parseInt(e.target.value))}
-                            className="flex-1 light-slider"
-                          />
-                          <span className="text-xs text-gray-400 w-8 text-right">{light.brightness}%</span>
-                        </div>
-                      )}
+              {/* MIDDLE: Temperature & Humidity (4 cols) */}
+              <div className="col-span-4 space-y-4">
+                <h2 className="text-sm text-gray-400 uppercase tracking-wider">
+                  Temperature / Humidity
+                </h2>
+                
+                <div className="glass-card p-4 space-y-4">
+                  {/* Temperature Bar */}
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>History</span>
+                      <span className="text-white font-medium">{currentRoom.temp}</span>
                     </div>
-                  ))}
+                    <div className="h-6 rounded-lg bg-gradient-to-r from-cyan-500 via-green-400 via-yellow-400 to-orange-500 relative">
+                      <div className="absolute -bottom-5 left-0 text-[10px] text-gray-500">0h ago</div>
+                      <div className="absolute -bottom-5 left-1/4 text-[10px] text-gray-500">18.8°C - 22.0°C</div>
+                      <div className="absolute -bottom-5 right-0 text-[10px] text-gray-500">Now</div>
+                    </div>
+                  </div>
+                  
+                  {/* Temperature Graph Placeholder */}
+                  <div className="h-24 mt-8 relative">
+                    <svg className="w-full h-full" viewBox="0 0 200 60" preserveAspectRatio="none">
+                      <path 
+                        d="M0,40 Q25,35 50,38 T100,30 T150,35 T200,25" 
+                        fill="none" 
+                        stroke="rgba(251,146,60,0.6)" 
+                        strokeWidth="2"
+                      />
+                      <path 
+                        d="M0,40 Q25,35 50,38 T100,30 T150,35 T200,25 L200,60 L0,60 Z" 
+                        fill="url(#tempGradient)" 
+                        opacity="0.3"
+                      />
+                      <defs>
+                        <linearGradient id="tempGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="rgb(251,146,60)" />
+                          <stop offset="100%" stopColor="transparent" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
+                  
+                  {/* Humidity Stats */}
+                  <div className="flex justify-around pt-4 border-t border-white/10">
+                    <div className="text-center">
+                      <div className="flex items-center gap-1 justify-center">
+                        <Droplets className="w-4 h-4 text-cyan-400" />
+                        <span className="text-xl font-bold text-white">{currentRoom.humidity}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">Humidity</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center gap-1 justify-center">
+                        <Droplets className="w-4 h-4 text-blue-400" />
+                        <span className="text-xl font-bold text-white">{currentRoom.outdoorHumidity}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">Outdoor Humidity</p>
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
+
+              {/* RIGHT: Room Layout (3 cols) */}
+              <div className="col-span-3 space-y-4">
+                <h2 className="text-sm text-gray-400 uppercase tracking-wider">
+                  Room Layout
+                </h2>
+                
+                <div className="glass-card p-2 aspect-square rounded-2xl overflow-hidden">
+                  {/* Placeholder isometric room image */}
+                  <div className="w-full h-full bg-gradient-to-br from-blue-900/50 to-indigo-900/50 rounded-xl flex items-center justify-center relative">
+                    {/* Simple isometric room placeholder */}
+                    <svg viewBox="0 0 200 200" className="w-full h-full p-4">
+                      {/* Floor */}
+                      <polygon 
+                        points="100,160 20,120 100,80 180,120" 
+                        fill="rgba(59,130,246,0.3)"
+                        stroke="rgba(59,130,246,0.5)"
+                        strokeWidth="1"
+                      />
+                      {/* Left wall */}
+                      <polygon 
+                        points="20,120 20,60 100,20 100,80" 
+                        fill="rgba(59,130,246,0.2)"
+                        stroke="rgba(59,130,246,0.4)"
+                        strokeWidth="1"
+                      />
+                      {/* Right wall */}
+                      <polygon 
+                        points="100,80 100,20 180,60 180,120" 
+                        fill="rgba(99,102,241,0.2)"
+                        stroke="rgba(99,102,241,0.4)"
+                        strokeWidth="1"
+                      />
+                      {/* Desk */}
+                      <polygon 
+                        points="120,130 80,110 120,90 160,110" 
+                        fill="rgba(139,92,246,0.5)"
+                        stroke="rgba(139,92,246,0.7)"
+                        strokeWidth="1"
+                      />
+                      {/* Chair */}
+                      <ellipse 
+                        cx="100" 
+                        cy="140" 
+                        rx="15" 
+                        ry="8" 
+                        fill="rgba(167,139,250,0.5)"
+                        stroke="rgba(167,139,250,0.7)"
+                        strokeWidth="1"
+                      />
+                      {/* Window on right wall */}
+                      <rect 
+                        x="130" 
+                        y="40" 
+                        width="30" 
+                        height="25" 
+                        fill="rgba(147,197,253,0.3)"
+                        stroke="rgba(147,197,253,0.6)"
+                        strokeWidth="1"
+                        transform="skewY(-30) translate(0, 50)"
+                      />
+                    </svg>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Bottom Nav (same as main) */}
+          {/* Bottom Nav */}
           <nav className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-t border-white/10 px-2 py-2 safe-area-pb">
             <div className="flex justify-around items-center max-w-lg mx-auto">
               {TABS.map((tab) => {
@@ -643,39 +822,14 @@ export default function Dashboard() {
                 <p className="text-gray-400">No lights found</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {lights.map((light) => (
-                  <div key={light.entity_id} className="glass-card p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <Lightbulb className={`w-5 h-5 ${light.state === 'on' ? 'text-yellow-400' : 'text-gray-600'}`} />
-                        <span className="text-white font-medium">{light.name}</span>
-                      </div>
-                      <button 
-                        onClick={() => toggleLight(light.entity_id)}
-                        className={`w-12 h-6 rounded-full transition-colors ${
-                          light.state === 'on' ? 'bg-yellow-500' : 'bg-gray-700'
-                        }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                          light.state === 'on' ? 'translate-x-6' : 'translate-x-0.5'
-                        }`} />
-                      </button>
-                    </div>
-                    {light.state === 'on' && light.supports_brightness && (
-                      <div className="flex items-center gap-3">
-                        <input 
-                          type="range" 
-                          min="1" 
-                          max="100" 
-                          value={light.brightness}
-                          onChange={(e) => setBrightness(light.entity_id, parseInt(e.target.value))}
-                          className="flex-1 light-slider"
-                        />
-                        <span className="text-xs text-gray-400 w-8 text-right">{light.brightness}%</span>
-                      </div>
-                    )}
-                  </div>
+                  <LightTile
+                    key={light.entity_id}
+                    light={light}
+                    onToggle={() => toggleLight(light.entity_id)}
+                    onBrightnessChange={(value) => setBrightness(light.entity_id, value)}
+                  />
                 ))}
               </div>
             )}
