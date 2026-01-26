@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { 
   Home, Lightbulb, Flower2, DoorOpen, Wind, Camera, Blinds,
   Moon, Thermometer, Droplets, Sofa, Bed, Baby, Gamepad2, UtensilsCrossed,
-  ChevronRight
+  ChevronRight, Settings, Wifi, WifiOff, Loader2
 } from 'lucide-react';
+import { useHomeAssistant } from '@/lib/useHomeAssistant';
+import { saveConfig, getConfig, testConnection } from '@/lib/homeassistant';
 
 // Tab definitions
 const TABS = [
@@ -26,16 +28,6 @@ const ROOMS = [
   { id: 'nirvana', name: "Nirvana's Room", icon: Baby, temp: '20.2°C', humidity: '50%', color: 'from-teal-400 to-cyan-500' },
   { id: 'playroom', name: 'Playroom', icon: Gamepad2, temp: '21.5°C', humidity: '48%', color: 'from-cyan-400 to-teal-500' },
   { id: 'kitchen', name: 'Kitchen', icon: UtensilsCrossed, temp: '22.0°C', humidity: '45%', color: 'from-gray-500 to-gray-600' },
-];
-
-// Light definitions
-const LIGHTS = [
-  { id: 'living-main', name: 'Living Room', brightness: 80, on: true },
-  { id: 'kitchen', name: 'Kitchen', brightness: 100, on: true },
-  { id: 'master', name: 'Master Bedroom', brightness: 30, on: true },
-  { id: 'ziggy', name: "Ziggy's Room", brightness: 0, on: false },
-  { id: 'nirvana', name: "Nirvana's Room", brightness: 0, on: false },
-  { id: 'playroom', name: 'Playroom', brightness: 50, on: true },
 ];
 
 // Calendar events (placeholder)
@@ -59,7 +51,29 @@ export default function Dashboard() {
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [currentDate, setCurrentDate] = useState('');
-  const [lights, setLights] = useState(LIGHTS);
+  const [showSettings, setShowSettings] = useState(false);
+  const [haUrl, setHaUrl] = useState('');
+  const [haToken, setHaToken] = useState('');
+  const [configStatus, setConfigStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+
+  // Home Assistant integration
+  const { 
+    lights, 
+    loading: lightsLoading, 
+    connected: haConnected, 
+    error: haError,
+    toggleLight, 
+    setBrightness, 
+    turnOffAll,
+    refresh: refreshLights
+  } = useHomeAssistant();
+
+  // Load saved config on mount
+  useEffect(() => {
+    const config = getConfig();
+    setHaUrl(config.url);
+    setHaToken(config.token);
+  }, []);
 
   useEffect(() => {
     const updateTime = () => {
@@ -88,19 +102,88 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const toggleLight = (id: string) => {
-    setLights(lights.map(light => 
-      light.id === id ? { ...light, on: !light.on, brightness: light.on ? 0 : 80 } : light
-    ));
+  const handleGoodNight = async () => {
+    await turnOffAll();
   };
 
-  const handleGoodNight = () => {
-    setLights(lights.map(light => ({ ...light, on: false, brightness: 0 })));
-    alert('Good Night! Turning off all lights and devices...');
+  const handleSaveConfig = async () => {
+    setConfigStatus('testing');
+    saveConfig(haUrl, haToken);
+    
+    const success = await testConnection();
+    if (success) {
+      setConfigStatus('success');
+      refreshLights();
+      setTimeout(() => {
+        setShowSettings(false);
+        setConfigStatus('idle');
+      }, 1500);
+    } else {
+      setConfigStatus('error');
+    }
   };
+
+  // Count lights that are on
+  const lightsOnCount = lights.filter(l => l.state === 'on').length;
 
   return (
     <div className="min-h-screen bg-gradient-mesh flex flex-col">
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="glass-card p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-white mb-4">Home Assistant Settings</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">URL</label>
+                <input
+                  type="text"
+                  value={haUrl}
+                  onChange={(e) => setHaUrl(e.target.value)}
+                  placeholder="http://192.168.1.x:8123"
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Long-Lived Access Token</label>
+                <input
+                  type="password"
+                  value={haToken}
+                  onChange={(e) => setHaToken(e.target.value)}
+                  placeholder="eyJ..."
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveConfig}
+                  disabled={configStatus === 'testing'}
+                  className={`flex-1 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+                    configStatus === 'success' ? 'bg-green-600' :
+                    configStatus === 'error' ? 'bg-red-600' :
+                    'bg-cyan-600 hover:bg-cyan-700'
+                  } text-white`}
+                >
+                  {configStatus === 'testing' && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {configStatus === 'success' ? 'Connected!' :
+                   configStatus === 'error' ? 'Failed' :
+                   configStatus === 'testing' ? 'Testing...' : 'Save & Test'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 p-4 pb-24 overflow-y-auto">
         {activeTab === 'home' && (
@@ -116,8 +199,26 @@ export default function Dashboard() {
                       <h1 className="text-2xl font-bold text-white">{greeting}</h1>
                       <p className="text-gray-400 text-sm">{currentDate}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-3xl font-light text-white">{currentTime}</p>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setShowSettings(true)}
+                        className="text-gray-500 hover:text-white transition-colors"
+                      >
+                        <Settings className="w-5 h-5" />
+                      </button>
+                      <div className="text-right">
+                        <p className="text-3xl font-light text-white">{currentTime}</p>
+                        <div className="flex items-center gap-1 justify-end">
+                          {haConnected ? (
+                            <Wifi className="w-3 h-3 text-green-400" />
+                          ) : (
+                            <WifiOff className="w-3 h-3 text-red-400" />
+                          )}
+                          <span className="text-xs text-gray-500">
+                            {haConnected ? 'Connected' : 'Disconnected'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   
@@ -138,10 +239,10 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Droplets className="w-5 h-5 text-cyan-400" />
+                      <Lightbulb className="w-5 h-5 text-yellow-400" />
                       <div>
-                        <p className="text-xl font-semibold text-white">52%</p>
-                        <p className="text-xs text-gray-500">Humidity</p>
+                        <p className="text-xl font-semibold text-white">{lightsOnCount}</p>
+                        <p className="text-xs text-gray-500">Lights On</p>
                       </div>
                     </div>
                   </div>
@@ -150,7 +251,8 @@ export default function Dashboard() {
                 {/* Good Night Button */}
                 <button 
                   onClick={handleGoodNight}
-                  className="w-full good-night-btn text-white py-5 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold"
+                  disabled={!haConnected}
+                  className="w-full good-night-btn text-white py-5 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Moon className="w-6 h-6" />
                   Good Night
@@ -232,15 +334,19 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Quick Actions Placeholder */}
+              {/* Quick Actions */}
               <div className="glass-card p-4">
                 <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Quick Actions</h2>
                 <div className="grid grid-cols-2 gap-2">
-                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
-                    <p className="text-xs text-gray-400">Movie Mode</p>
+                  <button 
+                    onClick={handleGoodNight}
+                    disabled={!haConnected}
+                    className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors disabled:opacity-50"
+                  >
+                    <p className="text-xs text-gray-400">All Lights Off</p>
                   </button>
                   <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
-                    <p className="text-xs text-gray-400">All Lights Off</p>
+                    <p className="text-xs text-gray-400">Movie Mode</p>
                   </button>
                   <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
                     <p className="text-xs text-gray-400">Away Mode</p>
@@ -256,43 +362,80 @@ export default function Dashboard() {
 
         {activeTab === 'lights' && (
           <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-white">Lights</h1>
-            <div className="space-y-3">
-              {lights.map((light) => (
-                <div key={light.id} className="glass-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <Lightbulb className={`w-5 h-5 ${light.on ? 'text-yellow-400' : 'text-gray-600'}`} />
-                      <span className="text-white font-medium">{light.name}</span>
-                    </div>
-                    <button 
-                      onClick={() => toggleLight(light.id)}
-                      className={`w-12 h-6 rounded-full transition-colors ${
-                        light.on ? 'bg-yellow-500' : 'bg-gray-700'
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                        light.on ? 'translate-x-6' : 'translate-x-0.5'
-                      }`} />
-                    </button>
-                  </div>
-                  {light.on && (
-                    <input 
-                      type="range" 
-                      min="1" 
-                      max="100" 
-                      value={light.brightness}
-                      onChange={(e) => {
-                        setLights(lights.map(l => 
-                          l.id === light.id ? { ...l, brightness: parseInt(e.target.value) } : l
-                        ));
-                      }}
-                      className="w-full light-slider"
-                    />
-                  )}
-                </div>
-              ))}
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-white">Lights</h1>
+              {haConnected ? (
+                <span className="text-xs text-green-400 flex items-center gap-1">
+                  <Wifi className="w-3 h-3" /> Live
+                </span>
+              ) : (
+                <button 
+                  onClick={() => setShowSettings(true)}
+                  className="text-xs text-red-400 flex items-center gap-1"
+                >
+                  <WifiOff className="w-3 h-3" /> Connect
+                </button>
+              )}
             </div>
+
+            {lightsLoading ? (
+              <div className="glass-card p-8 text-center">
+                <Loader2 className="w-8 h-8 text-cyan-400 mx-auto animate-spin mb-3" />
+                <p className="text-gray-400">Loading lights...</p>
+              </div>
+            ) : !haConnected ? (
+              <div className="glass-card p-8 text-center">
+                <WifiOff className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-400 mb-4">Not connected to Home Assistant</p>
+                <button 
+                  onClick={() => setShowSettings(true)}
+                  className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-2 rounded-lg transition-colors"
+                >
+                  Configure
+                </button>
+              </div>
+            ) : lights.length === 0 ? (
+              <div className="glass-card p-8 text-center">
+                <Lightbulb className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-400">No lights found</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {lights.map((light) => (
+                  <div key={light.entity_id} className="glass-card p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <Lightbulb className={`w-5 h-5 ${light.state === 'on' ? 'text-yellow-400' : 'text-gray-600'}`} />
+                        <span className="text-white font-medium">{light.name}</span>
+                      </div>
+                      <button 
+                        onClick={() => toggleLight(light.entity_id)}
+                        className={`w-12 h-6 rounded-full transition-colors ${
+                          light.state === 'on' ? 'bg-yellow-500' : 'bg-gray-700'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
+                          light.state === 'on' ? 'translate-x-6' : 'translate-x-0.5'
+                        }`} />
+                      </button>
+                    </div>
+                    {light.state === 'on' && light.supports_brightness && (
+                      <div className="flex items-center gap-3">
+                        <input 
+                          type="range" 
+                          min="1" 
+                          max="100" 
+                          value={light.brightness}
+                          onChange={(e) => setBrightness(light.entity_id, parseInt(e.target.value))}
+                          className="flex-1 light-slider"
+                        />
+                        <span className="text-xs text-gray-400 w-8 text-right">{light.brightness}%</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
