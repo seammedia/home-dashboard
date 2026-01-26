@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { 
   Home, Lightbulb, Flower2, DoorOpen, Wind, Camera, Blinds,
   Moon, Thermometer, Droplets, Sofa, Bed, Baby, Gamepad2, UtensilsCrossed,
-  ChevronRight, Settings, Wifi, WifiOff, Loader2
+  ChevronRight, ChevronLeft, Settings, Wifi, WifiOff, Loader2, Monitor
 } from 'lucide-react';
 import { useHomeAssistant } from '@/lib/useHomeAssistant';
 import { saveConfig, getConfig, testConnection } from '@/lib/homeassistant';
@@ -20,14 +20,89 @@ const TABS = [
   { id: 'blinds', label: 'Blinds', icon: Blinds },
 ];
 
-// Room definitions
+// Room definitions with light entity patterns
 const ROOMS = [
-  { id: 'living', name: 'Living Room', icon: Sofa, temp: '21.0°C', humidity: '49%', color: 'from-yellow-500 to-amber-600' },
-  { id: 'master', name: 'Master Bedroom', icon: Bed, temp: '19.5°C', humidity: '52%', color: 'from-green-500 to-emerald-600' },
-  { id: 'ziggy', name: "Ziggy's Room", icon: Baby, temp: '20.0°C', humidity: '55%', color: 'from-lime-400 to-green-500' },
-  { id: 'nirvana', name: "Nirvana's Room", icon: Baby, temp: '20.2°C', humidity: '50%', color: 'from-teal-400 to-cyan-500' },
-  { id: 'playroom', name: 'Playroom', icon: Gamepad2, temp: '21.5°C', humidity: '48%', color: 'from-cyan-400 to-teal-500' },
-  { id: 'kitchen', name: 'Kitchen', icon: UtensilsCrossed, temp: '22.0°C', humidity: '45%', color: 'from-gray-500 to-gray-600' },
+  { 
+    id: 'office', 
+    name: 'Office', 
+    icon: Monitor, 
+    temp: '21.5°C', 
+    humidity: '45%', 
+    color: 'from-purple-500 to-indigo-600',
+    lightPatterns: ['office', 'upstairs_office']
+  },
+  { 
+    id: 'living', 
+    name: 'Living Room', 
+    icon: Sofa, 
+    temp: '21.0°C', 
+    humidity: '49%', 
+    color: 'from-yellow-500 to-amber-600',
+    lightPatterns: ['living', 'tv_unit']
+  },
+  { 
+    id: 'master', 
+    name: 'Master Bedroom', 
+    icon: Bed, 
+    temp: '19.5°C', 
+    humidity: '52%', 
+    color: 'from-green-500 to-emerald-600',
+    lightPatterns: ['master_bedroom']
+  },
+  { 
+    id: 'bedroom', 
+    name: 'Bedroom', 
+    icon: Bed, 
+    temp: '20.0°C', 
+    humidity: '50%', 
+    color: 'from-blue-500 to-cyan-600',
+    lightPatterns: ['bedroom_light']
+  },
+  { 
+    id: 'ziggy', 
+    name: "Ziggy's Room", 
+    icon: Baby, 
+    temp: '20.0°C', 
+    humidity: '55%', 
+    color: 'from-lime-400 to-green-500',
+    lightPatterns: ['ziggy']
+  },
+  { 
+    id: 'nirvana', 
+    name: "Nirvana's Room", 
+    icon: Baby, 
+    temp: '20.2°C', 
+    humidity: '50%', 
+    color: 'from-teal-400 to-cyan-500',
+    lightPatterns: ['nirvana']
+  },
+  { 
+    id: 'playroom', 
+    name: 'Playroom', 
+    icon: Gamepad2, 
+    temp: '21.5°C', 
+    humidity: '48%', 
+    color: 'from-cyan-400 to-teal-500',
+    lightPatterns: ['playroom']
+  },
+  { 
+    id: 'kitchen', 
+    name: 'Kitchen', 
+    icon: UtensilsCrossed, 
+    temp: '22.0°C', 
+    humidity: '45%', 
+    color: 'from-orange-500 to-red-600',
+    lightPatterns: ['kitchen']
+  },
+  { 
+    id: 'other', 
+    name: 'Other', 
+    icon: Lightbulb, 
+    temp: '-', 
+    humidity: '-', 
+    color: 'from-gray-500 to-gray-600',
+    lightPatterns: ['stairs', 'hue_go', 'bar']
+  },
 ];
 
 // Calendar events (placeholder)
@@ -48,6 +123,7 @@ const CAMERAS = [
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('home');
+  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [currentDate, setCurrentDate] = useState('');
@@ -123,8 +199,37 @@ export default function Dashboard() {
     }
   };
 
-  // Count lights that are on
+  // Get lights for a specific room
+  const getLightsForRoom = (roomId: string) => {
+    const room = ROOMS.find(r => r.id === roomId);
+    if (!room) return [];
+    
+    return lights.filter(light => 
+      room.lightPatterns.some(pattern => 
+        light.entity_id.toLowerCase().includes(pattern.toLowerCase())
+      )
+    );
+  };
+
+  // Count lights that are on for a room
+  const getRoomLightsOnCount = (roomId: string) => {
+    return getLightsForRoom(roomId).filter(l => l.state === 'on').length;
+  };
+
+  // Turn off all lights in a room
+  const turnOffRoomLights = async (roomId: string) => {
+    const roomLights = getLightsForRoom(roomId);
+    for (const light of roomLights.filter(l => l.state === 'on')) {
+      await toggleLight(light.entity_id);
+    }
+  };
+
+  // Count total lights that are on
   const lightsOnCount = lights.filter(l => l.state === 'on').length;
+
+  // Get current room data
+  const currentRoom = selectedRoom ? ROOMS.find(r => r.id === selectedRoom) : null;
+  const currentRoomLights = selectedRoom ? getLightsForRoom(selectedRoom) : [];
 
   return (
     <div className="min-h-screen bg-gradient-mesh flex flex-col">
@@ -181,6 +286,132 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Room Detail View */}
+      {selectedRoom && currentRoom && (
+        <div className="fixed inset-0 bg-gradient-mesh z-40 flex flex-col">
+          {/* Room Header */}
+          <div className={`bg-gradient-to-r ${currentRoom.color} p-6`}>
+            <button 
+              onClick={() => setSelectedRoom(null)}
+              className="flex items-center gap-2 text-white/80 hover:text-white mb-4"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              Back
+            </button>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <currentRoom.icon className="w-10 h-10 text-white" />
+                <div>
+                  <h1 className="text-2xl font-bold text-white">{currentRoom.name}</h1>
+                  <p className="text-white/70">{currentRoomLights.length} lights</p>
+                </div>
+              </div>
+              <button
+                onClick={() => turnOffRoomLights(selectedRoom)}
+                className="bg-black/20 hover:bg-black/30 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                All Off
+              </button>
+            </div>
+          </div>
+
+          {/* Room Content */}
+          <div className="flex-1 p-4 overflow-y-auto pb-24">
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {/* Temperature Card */}
+              <div className="glass-card p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Thermometer className="w-5 h-5 text-orange-400" />
+                  <span className="text-gray-400 text-sm">Temperature</span>
+                </div>
+                <p className="text-3xl font-bold text-white">{currentRoom.temp}</p>
+              </div>
+
+              {/* Humidity Card */}
+              <div className="glass-card p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Droplets className="w-5 h-5 text-cyan-400" />
+                  <span className="text-gray-400 text-sm">Humidity</span>
+                </div>
+                <p className="text-3xl font-bold text-white">{currentRoom.humidity}</p>
+              </div>
+            </div>
+
+            {/* Lights Section */}
+            <div>
+              <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Lights</h2>
+              {currentRoomLights.length === 0 ? (
+                <div className="glass-card p-8 text-center">
+                  <Lightbulb className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-400">No lights in this room</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {currentRoomLights.map((light) => (
+                    <div key={light.entity_id} className="glass-card p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <Lightbulb className={`w-5 h-5 ${light.state === 'on' ? 'text-yellow-400' : 'text-gray-600'}`} />
+                          <span className="text-white font-medium">{light.name}</span>
+                        </div>
+                        <button 
+                          onClick={() => toggleLight(light.entity_id)}
+                          className={`w-12 h-6 rounded-full transition-colors ${
+                            light.state === 'on' ? 'bg-yellow-500' : 'bg-gray-700'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
+                            light.state === 'on' ? 'translate-x-6' : 'translate-x-0.5'
+                          }`} />
+                        </button>
+                      </div>
+                      {light.state === 'on' && light.supports_brightness && (
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="range" 
+                            min="1" 
+                            max="100" 
+                            value={light.brightness}
+                            onChange={(e) => setBrightness(light.entity_id, parseInt(e.target.value))}
+                            className="flex-1 light-slider"
+                          />
+                          <span className="text-xs text-gray-400 w-8 text-right">{light.brightness}%</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom Nav (same as main) */}
+          <nav className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-t border-white/10 px-2 py-2 safe-area-pb">
+            <div className="flex justify-around items-center max-w-lg mx-auto">
+              {TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setSelectedRoom(null);
+                      setActiveTab(tab.id);
+                    }}
+                    className={`flex flex-col items-center py-2 px-3 rounded-xl transition-all ${
+                      isActive ? 'tab-active' : 'text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="text-[10px] mt-1 font-medium">{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
         </div>
       )}
 
@@ -284,17 +515,29 @@ export default function Dashboard() {
             <div>
               <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Rooms</h2>
               <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
-                {ROOMS.map((room) => {
+                {ROOMS.filter(r => r.id !== 'other').map((room) => {
                   const Icon = room.icon;
+                  const lightsOn = getRoomLightsOnCount(room.id);
+                  const totalLights = getLightsForRoom(room.id).length;
                   return (
                     <div 
                       key={room.id}
+                      onClick={() => setSelectedRoom(room.id)}
                       className={`flex-shrink-0 w-28 h-28 bg-gradient-to-br ${room.color} p-3 rounded-2xl cursor-pointer hover:scale-[1.02] transition-transform flex flex-col justify-between`}
                     >
-                      <Icon className="w-6 h-6 text-white/90" />
+                      <div className="flex justify-between items-start">
+                        <Icon className="w-6 h-6 text-white/90" />
+                        {lightsOn > 0 && (
+                          <div className="bg-yellow-400 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                            {lightsOn}
+                          </div>
+                        )}
+                      </div>
                       <div>
                         <p className="font-semibold text-white text-xs leading-tight">{room.name}</p>
-                        <p className="text-[10px] text-white/70">{room.temp}</p>
+                        <p className="text-[10px] text-white/70">
+                          {totalLights > 0 ? `${totalLights} lights` : room.temp}
+                        </p>
                       </div>
                     </div>
                   );
