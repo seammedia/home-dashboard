@@ -23,16 +23,16 @@ const TABS = [
 
 // Room definitions with light entity patterns and placeholder images
 const ROOMS = [
-  { 
-    id: 'office', 
-    name: 'Office', 
-    icon: Monitor, 
-    temp: '21.5°C', 
+  {
+    id: 'office',
+    name: 'Office',
+    icon: Monitor,
+    temp: '21.5°C',
     humidity: '45%',
     outdoorHumidity: '62%',
     color: 'from-purple-500 to-indigo-600',
     lightPatterns: ['office', 'upstairs_office'],
-    layoutImage: '/rooms/office.png'
+    layoutImage: '/rooms/office.jpg'
   },
   { 
     id: 'living', 
@@ -505,62 +505,21 @@ export default function Dashboard() {
                 <h2 className="text-sm text-gray-400 uppercase tracking-wider">
                   Room Layout
                 </h2>
-                
-                <div className="glass-card p-2 aspect-square rounded-2xl overflow-hidden">
-                  {/* Placeholder isometric room image */}
-                  <div className="w-full h-full bg-gradient-to-br from-blue-900/50 to-indigo-900/50 rounded-xl flex items-center justify-center relative">
-                    {/* Simple isometric room placeholder */}
-                    <svg viewBox="0 0 200 200" className="w-full h-full p-4">
-                      {/* Floor */}
-                      <polygon 
-                        points="100,160 20,120 100,80 180,120" 
-                        fill="rgba(59,130,246,0.3)"
-                        stroke="rgba(59,130,246,0.5)"
-                        strokeWidth="1"
+
+                <div className="glass-card p-2 rounded-2xl overflow-hidden">
+                  {/* Room isometric image */}
+                  <div className="w-full h-full rounded-xl overflow-hidden">
+                    {currentRoom.layoutImage ? (
+                      <img
+                        src={currentRoom.layoutImage}
+                        alt={`${currentRoom.name} layout`}
+                        className="w-full h-full object-cover rounded-xl"
                       />
-                      {/* Left wall */}
-                      <polygon 
-                        points="20,120 20,60 100,20 100,80" 
-                        fill="rgba(59,130,246,0.2)"
-                        stroke="rgba(59,130,246,0.4)"
-                        strokeWidth="1"
-                      />
-                      {/* Right wall */}
-                      <polygon 
-                        points="100,80 100,20 180,60 180,120" 
-                        fill="rgba(99,102,241,0.2)"
-                        stroke="rgba(99,102,241,0.4)"
-                        strokeWidth="1"
-                      />
-                      {/* Desk */}
-                      <polygon 
-                        points="120,130 80,110 120,90 160,110" 
-                        fill="rgba(139,92,246,0.5)"
-                        stroke="rgba(139,92,246,0.7)"
-                        strokeWidth="1"
-                      />
-                      {/* Chair */}
-                      <ellipse 
-                        cx="100" 
-                        cy="140" 
-                        rx="15" 
-                        ry="8" 
-                        fill="rgba(167,139,250,0.5)"
-                        stroke="rgba(167,139,250,0.7)"
-                        strokeWidth="1"
-                      />
-                      {/* Window on right wall */}
-                      <rect 
-                        x="130" 
-                        y="40" 
-                        width="30" 
-                        height="25" 
-                        fill="rgba(147,197,253,0.3)"
-                        stroke="rgba(147,197,253,0.6)"
-                        strokeWidth="1"
-                        transform="skewY(-30) translate(0, 50)"
-                      />
-                    </svg>
+                    ) : (
+                      <div className="w-full h-full aspect-square bg-gradient-to-br from-blue-900/50 to-indigo-900/50 rounded-xl flex items-center justify-center">
+                        <p className="text-gray-500 text-sm">No image</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
