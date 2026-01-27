@@ -124,13 +124,17 @@ const ROOMS = [
   },
 ];
 
-// Calendar events (placeholder)
-const CALENDAR_EVENTS = [
-  { day: 'Mon', date: '27', title: 'School Drop-off', time: '8:30 AM', color: 'bg-blue-500' },
-  { day: 'Tue', date: '28', title: 'Dentist', time: '2:00 PM', color: 'bg-pink-500' },
-  { day: 'Wed', date: '29', title: 'Swimming Lessons', time: '4:00 PM', color: 'bg-green-500' },
-  { day: 'Thu', date: '30', title: 'Work Meeting', time: '10:00 AM', color: 'bg-purple-500' },
-];
+// Calendar event colors (rotate through these)
+const EVENT_COLORS = ['bg-blue-500', 'bg-pink-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-cyan-500'];
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  description?: string;
+  location?: string;
+}
 
 // Camera feeds (placeholder)
 const CAMERAS = [
@@ -212,6 +216,8 @@ export default function Dashboard() {
   const [haUrl, setHaUrl] = useState('');
   const [haToken, setHaToken] = useState('');
   const [configStatus, setConfigStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(true);
 
   // Home Assistant integration
   const { 
@@ -258,6 +264,37 @@ export default function Dashboard() {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch calendar events
+  useEffect(() => {
+    const fetchCalendar = async () => {
+      try {
+        const response = await fetch('/api/calendar');
+        const data = await response.json();
+        setCalendarEvents(data.events || []);
+      } catch (error) {
+        console.error('Failed to fetch calendar:', error);
+      } finally {
+        setCalendarLoading(false);
+      }
+    };
+
+    fetchCalendar();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchCalendar, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Format calendar event for display
+  const formatCalendarEvent = (event: CalendarEvent, index: number) => {
+    const date = new Date(event.start);
+    const day = date.toLocaleDateString('en-AU', { weekday: 'short' });
+    const dateNum = date.getDate().toString();
+    const time = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true });
+    const color = EVENT_COLORS[index % EVENT_COLORS.length];
+
+    return { day, date: dateNum, title: event.title, time, color };
+  };
 
   const handleGoodNight = async () => {
     await turnOffAll();
@@ -557,10 +594,10 @@ export default function Dashboard() {
       <main className="flex-1 p-4 pb-24 overflow-y-auto">
         {activeTab === 'home' && (
           <div className="space-y-4">
-            {/* Top Row: Greeting/Climate + Calendar */}
-            <div className="grid grid-cols-3 gap-4">
-              {/* Left: Greeting + Climate (2 cols) */}
-              <div className="col-span-2 space-y-4">
+            {/* Main Grid: Left (Greeting + Rooms) + Right (Calendar) */}
+            <div className="grid grid-cols-12 gap-4">
+              {/* Left Column: Greeting + Good Night + Rooms (8 cols) */}
+              <div className="col-span-8 space-y-4">
                 {/* Header with time */}
                 <div className="glass-card p-4">
                   <div className="flex justify-between items-start">
@@ -569,7 +606,7 @@ export default function Dashboard() {
                       <p className="text-gray-400 text-sm">{currentDate}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button 
+                      <button
                         onClick={() => setShowSettings(true)}
                         className="text-gray-500 hover:text-white transition-colors"
                       >
@@ -590,7 +627,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Climate Row */}
                   <div className="flex items-center gap-6 mt-4 pt-4 border-t border-white/10">
                     <div className="flex items-center gap-2">
@@ -618,7 +655,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Good Night Button */}
-                <button 
+                <button
                   onClick={handleGoodNight}
                   disabled={!haConnected}
                   className="w-full good-night-btn text-white py-5 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -626,60 +663,74 @@ export default function Dashboard() {
                   <Moon className="w-6 h-6" />
                   Good Night
                 </button>
-              </div>
 
-              {/* Right: Calendar (1 col) */}
-              <div className="glass-card p-4">
-                <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Calendar</h2>
-                <div className="space-y-2">
-                  {CALENDAR_EVENTS.map((event, idx) => (
-                    <div key={idx} className="flex items-center gap-3">
-                      <div className="text-center w-10">
-                        <p className="text-xs text-gray-500">{event.day}</p>
-                        <p className="text-lg font-bold text-white">{event.date}</p>
-                      </div>
-                      <div className={`w-1 h-10 rounded-full ${event.color}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white font-medium truncate">{event.title}</p>
-                        <p className="text-xs text-gray-500">{event.time}</p>
-                      </div>
-                    </div>
-                  ))}
+                {/* Rooms - 2 rows of 4 */}
+                <div>
+                  <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Rooms</h2>
+                  <div className="grid grid-cols-4 gap-3">
+                    {ROOMS.filter(r => r.id !== 'other').map((room) => {
+                      const Icon = room.icon;
+                      const lightsOn = getRoomLightsOnCount(room.id);
+                      const totalLights = getLightsForRoom(room.id).length;
+                      return (
+                        <div
+                          key={room.id}
+                          onClick={() => setSelectedRoom(room.id)}
+                          className={`h-24 bg-gradient-to-br ${room.color} p-3 rounded-2xl cursor-pointer hover:scale-[1.02] transition-transform flex flex-col justify-between`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <Icon className="w-5 h-5 text-white/90" />
+                            {lightsOn > 0 && (
+                              <div className="bg-yellow-400 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                {lightsOn}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-white text-xs leading-tight">{room.name}</p>
+                            <p className="text-[10px] text-white/70">
+                              {totalLights > 0 ? `${totalLights} lights` : room.temp}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Rooms Row */}
-            <div>
-              <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Rooms</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
-                {ROOMS.filter(r => r.id !== 'other').map((room) => {
-                  const Icon = room.icon;
-                  const lightsOn = getRoomLightsOnCount(room.id);
-                  const totalLights = getLightsForRoom(room.id).length;
-                  return (
-                    <div 
-                      key={room.id}
-                      onClick={() => setSelectedRoom(room.id)}
-                      className={`flex-shrink-0 w-28 h-28 bg-gradient-to-br ${room.color} p-3 rounded-2xl cursor-pointer hover:scale-[1.02] transition-transform flex flex-col justify-between`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <Icon className="w-6 h-6 text-white/90" />
-                        {lightsOn > 0 && (
-                          <div className="bg-yellow-400 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                            {lightsOn}
+              {/* Right Column: Calendar (4 cols) - extends full height */}
+              <div className="col-span-4">
+                <div className="glass-card p-4 h-full">
+                  <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Calendar</h2>
+                  <div className="space-y-3">
+                    {calendarLoading ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="w-6 h-6 text-gray-500 animate-spin mx-auto" />
+                        <p className="text-xs text-gray-500 mt-2">Loading...</p>
+                      </div>
+                    ) : calendarEvents.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-8">No upcoming events</p>
+                    ) : (
+                      calendarEvents.slice(0, 8).map((event, idx) => {
+                        const formatted = formatCalendarEvent(event, idx);
+                        return (
+                          <div key={event.id} className="flex items-center gap-3">
+                            <div className="text-center w-10">
+                              <p className="text-xs text-gray-500">{formatted.day}</p>
+                              <p className="text-lg font-bold text-white">{formatted.date}</p>
+                            </div>
+                            <div className={`w-1 h-12 rounded-full ${formatted.color}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white font-medium truncate">{formatted.title}</p>
+                              <p className="text-xs text-gray-500">{formatted.time}</p>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-white text-xs leading-tight">{room.name}</p>
-                        <p className="text-[10px] text-white/70">
-                          {totalLights > 0 ? `${totalLights} lights` : room.temp}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -702,40 +753,6 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Bottom Bento: Media + Quick Actions */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Media Player Placeholder */}
-              <div className="glass-card p-4">
-                <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Media</h2>
-                <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl flex items-center justify-center">
-                  <p className="text-gray-600 text-sm">No media playing</p>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="glass-card p-4">
-                <h2 className="text-sm text-gray-400 uppercase tracking-wider mb-3">Quick Actions</h2>
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={handleGoodNight}
-                    disabled={!haConnected}
-                    className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors disabled:opacity-50"
-                  >
-                    <p className="text-xs text-gray-400">All Lights Off</p>
-                  </button>
-                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
-                    <p className="text-xs text-gray-400">Movie Mode</p>
-                  </button>
-                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
-                    <p className="text-xs text-gray-400">Away Mode</p>
-                  </button>
-                  <button className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-colors">
-                    <p className="text-xs text-gray-400">Party Mode</p>
-                  </button>
-                </div>
               </div>
             </div>
           </div>

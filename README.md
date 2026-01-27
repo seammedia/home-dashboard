@@ -7,6 +7,7 @@ A Next.js dashboard for controlling Home Assistant smart home devices, deployed 
 - Control Philips Hue lights (on/off, brightness)
 - Room-based organization with bento grid layout
 - "Good Night" button to turn off all lights
+- Google Calendar integration (via iCal)
 - Real-time status updates
 - Mobile-friendly responsive design
 
@@ -196,6 +197,23 @@ This is more universal and works even when the `light` domain services aren't av
 - Cannot be integrated with Home Assistant locally
 - Alternative: Use wired Reolink PoE cameras which have local APIs
 
+### TP-Link Tapo Cameras (Recommended Alternative)
+- Tapo cameras (C510W, C320WS, C210, etc.) **DO support RTSP and ONVIF**
+- Can be integrated with Home Assistant via:
+  - HACS custom integration: [Tapo: Cameras Control](https://github.com/JurajNyiri/HomeAssistant-Tapo-Control)
+  - Direct RTSP stream in generic camera
+- **Setup steps:**
+  1. In Tapo app: Me → Third Party Services → Third-Party Compatibility → On
+  2. Create a Camera Account (separate username/password for RTSP)
+  3. RTSP URL: `rtsp://username:password@CAMERA_IP:554/stream1` (HD) or `stream2` (SD)
+  4. Test with VLC before adding to Home Assistant
+- **OrbStack proxy required:** Add socat proxy for port 554:
+  ```bash
+  socat TCP-LISTEN:554,reuseaddr,fork TCP:CAMERA_IP:554 &
+  ```
+- **Known issues:** Firmware updates occasionally break HA integration temporarily
+- **Tip:** Set static IP for camera in router to avoid connection issues
+
 ### Apple TV Integration
 - Requires proper network access from Home Assistant container
 - With OrbStack, would need proxy setup similar to Hue Bridge
@@ -206,6 +224,30 @@ This is more universal and works even when the `light` domain services aren't av
 - Not recommended to hard-cut power to Apple TV/smart TVs regularly
 - Can interrupt updates and cause minor flash storage wear
 - Better to use sleep commands or let devices sleep naturally
+
+### Google Calendar Integration
+
+**OAuth Method (Complex)**
+- Requires Google Cloud Console project with Calendar API enabled
+- Create OAuth 2.0 credentials (Web application type)
+- Redirect URI must match exactly: `https://my.home-assistant.io/redirect/oauth`
+- **Issue with Cloudflare Tunnel**: If accessing HA via Cloudflare Tunnel instead of `my.home-assistant.io`, you'll get `redirect_uri_mismatch` errors
+- The OAuth flow expects the standard Home Assistant Cloud redirect
+
+**iCal Method (Recommended)**
+- Use Google Calendar's "Secret address in iCal format" (NOT public address)
+- The secret URL contains a long random token - secure but not indexed/discoverable
+- Dashboard fetches via `/api/calendar` route which proxies the iCal feed
+- To get the secret iCal URL:
+  1. Google Calendar → Settings → Click your calendar
+  2. Scroll to "Integrate calendar"
+  3. Copy "Secret address in iCal format" (ends with `.ics`)
+- Update the URL in `/src/app/api/calendar/route.ts`
+
+**Home Assistant Calendar Integration**
+- Alternative: Set up calendar in HA, then fetch via HA API
+- Supports Google Calendar, CalDAV, Local Calendar
+- Same OAuth issues apply if using Google Calendar integration in HA
 
 ## Development
 
@@ -242,18 +284,35 @@ npm run build
 - No spaces or line breaks
 - Format: `eyJhbG...` (183 characters, 3 parts separated by dots)
 
+### Calendar Shows "No upcoming events"
+1. Verify the iCal URL is correct in `/src/app/api/calendar/route.ts`
+2. Use the **secret** iCal address, not public embed URL
+3. Test the iCal URL directly: `curl "YOUR_ICAL_URL" | head -50`
+4. Ensure events are within the next 14 days
+5. Check Vercel function logs: `vercel logs --follow`
+
+### Google Calendar OAuth "redirect_uri_mismatch"
+- This occurs when using Cloudflare Tunnel instead of `my.home-assistant.io`
+- Google OAuth expects redirect to `https://my.home-assistant.io/redirect/oauth`
+- **Solution:** Use iCal method instead of OAuth for calendar integration
+
 ## File Structure
 
 ```
 home-dashboard/
 ├── src/
 │   ├── app/
+│   │   ├── api/
+│   │   │   └── calendar/
+│   │   │       └── route.ts  # Google Calendar iCal proxy
 │   │   ├── layout.tsx
 │   │   └── page.tsx          # Main dashboard component
 │   └── lib/
 │       ├── homeassistant.ts  # HA API integration
 │       └── useHomeAssistant.ts # React hook for HA
 ├── public/
+│   └── rooms/                # Room layout images
+│       └── office.jpg
 ├── .env.local                # Local environment variables
 └── README.md
 ```
@@ -266,6 +325,7 @@ home-dashboard/
 | Hue Bridge | 10.0.0.2 (via proxy) | Philips Hue lights |
 | Cloudflare Tunnel | Mac | Remote HTTPS access |
 | Vercel | Cloud | Dashboard hosting |
+| Google Calendar | Cloud (iCal) | Family calendar events |
 
 ## Useful Commands
 
