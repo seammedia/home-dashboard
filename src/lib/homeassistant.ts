@@ -30,10 +30,16 @@ export interface HaState {
 async function haFetch(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('ha_token') || HA_TOKEN;
   const url = localStorage.getItem('ha_url') || HA_URL;
-  
+
   if (!token) {
     throw new Error('No Home Assistant token configured');
   }
+
+  // Debug: log what we're sending (token truncated for security)
+  console.log('[HA Debug] URL:', url + endpoint);
+  console.log('[HA Debug] Token length:', token.length);
+  console.log('[HA Debug] Token starts with:', token.substring(0, 20) + '...');
+  console.log('[HA Debug] Token ends with:', '...' + token.substring(token.length - 20));
 
   const response = await fetch(`${url}${endpoint}`, {
     ...options,
@@ -43,6 +49,8 @@ async function haFetch(endpoint: string, options: RequestInit = {}) {
       ...options.headers,
     },
   });
+
+  console.log('[HA Debug] Response status:', response.status);
 
   if (!response.ok) {
     throw new Error(`Home Assistant API error: ${response.status}`);
