@@ -35,12 +35,6 @@ async function haFetch(endpoint: string, options: RequestInit = {}) {
     throw new Error('No Home Assistant token configured');
   }
 
-  // Debug: log what we're sending (token truncated for security)
-  console.log('[HA Debug] URL:', url + endpoint);
-  console.log('[HA Debug] Token length:', token.length);
-  console.log('[HA Debug] Token starts with:', token.substring(0, 20) + '...');
-  console.log('[HA Debug] Token ends with:', '...' + token.substring(token.length - 20));
-
   const response = await fetch(`${url}${endpoint}`, {
     ...options,
     headers: {
@@ -49,8 +43,6 @@ async function haFetch(endpoint: string, options: RequestInit = {}) {
       ...options.headers,
     },
   });
-
-  console.log('[HA Debug] Response status:', response.status);
 
   if (!response.ok) {
     throw new Error(`Home Assistant API error: ${response.status}`);
@@ -95,21 +87,22 @@ export async function turnOn(entityId: string, brightness?: number) {
   if (brightness !== undefined) {
     data.brightness = Math.round((brightness / 100) * 255);
   }
-  return haFetch('/api/services/light/turn_on', {
+  // Use homeassistant.turn_on as it's the universal service that works for all entities
+  return haFetch('/api/services/homeassistant/turn_on', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
 export async function turnOff(entityId: string) {
-  return haFetch('/api/services/light/turn_off', {
+  return haFetch('/api/services/homeassistant/turn_off', {
     method: 'POST',
     body: JSON.stringify({ entity_id: entityId }),
   });
 }
 
 export async function toggle(entityId: string) {
-  return haFetch('/api/services/light/toggle', {
+  return haFetch('/api/services/homeassistant/toggle', {
     method: 'POST',
     body: JSON.stringify({ entity_id: entityId }),
   });
