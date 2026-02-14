@@ -115,7 +115,12 @@ export async function setBrightness(entityId: string, brightness: number) {
 export async function turnOffAll() {
   const lights = await getLights();
   const onLights = lights.filter(l => l.state === 'on');
-  await Promise.all(onLights.map(l => turnOff(l.entity_id)));
+  await Promise.allSettled([
+    ...onLights.map(l => turnOff(l.entity_id)),
+    // Sleep Apple TV - use domain-specific remote/turn_off to send sleep command
+    // even when HA thinks the device is already off (integration can go stale)
+    callService('remote', 'turn_off', { entity_id: 'remote.lounge_room' }),
+  ]);
 }
 
 // Scene/automation helpers
