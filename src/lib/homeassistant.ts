@@ -117,9 +117,9 @@ export async function turnOffAll() {
   const onLights = lights.filter(l => l.state === 'on');
   await Promise.allSettled([
     ...onLights.map(l => turnOff(l.entity_id)),
-    // Sleep Apple TV - use domain-specific remote/turn_off to send sleep command
-    // even when HA thinks the device is already off (integration can go stale)
-    callService('remote', 'turn_off', { entity_id: 'remote.lounge_room' }),
+    // Sleep Apple TV via server-side API route that reloads the integration
+    // first (it goes stale and loses connection after TV sleeps/wakes)
+    fetch('/api/appletv/sleep', { method: 'POST' }),
   ]);
 }
 
