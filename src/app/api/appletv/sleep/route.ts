@@ -3,51 +3,30 @@ import { NextResponse } from 'next/server';
 const HA_URL = process.env.NEXT_PUBLIC_HA_URL || '';
 const HA_TOKEN = process.env.NEXT_PUBLIC_HA_TOKEN || '';
 
-const APPLE_TV_CONFIG_ENTRY_ID = '01KHD3PX3R0QCXENV5NH7M355F';
-
-async function haFetch(endpoint: string, options: RequestInit = {}) {
-  const response = await fetch(`${HA_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${HA_TOKEN}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-  return response;
-}
-
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 export async function POST() {
   if (!HA_URL || !HA_TOKEN) {
     return NextResponse.json({ error: 'Home Assistant not configured' }, { status: 500 });
   }
 
   try {
-    // Step 1: Reload the Apple TV integration so it reconnects.
-    // The integration goes stale after the TV sleeps/wakes, reporting "off"
-    // even when the TV is on. Reloading forces a fresh connection.
-    await haFetch(
-      `/api/config/config_entries/entry/${APPLE_TV_CONFIG_ENTRY_ID}/reload`,
-      { method: 'POST' }
-    );
-
-    // Step 2: Wait for the integration to reconnect and discover the TV
-    await sleep(3000);
-
-    // Step 3: Send the sleep command via remote/turn_off
-    const result = await haFetch('/api/services/remote/turn_off', {
+    // Trigger the HA script that reloads the Apple TV integration and sends sleep.
+    // The script runs inside HA (no tunnel timeout issues) and handles:
+    // 1. Reload config entry (fixes stale integration that reports "off" when TV is on)
+    // 2. Wait 5s for reconnection
+    // 3. Send remote.turn_off to sleep the TV
+    const response = await fetch(`${HA_URL}/api/services/script/turn_on`, {
       method: 'POST',
-      body: JSON.stringify({ entity_id: 'remote.lounge_room' }),
+      headers: {
+        Authorization: `Bearer ${HA_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ entity_id: 'script.sleep_apple_tv' }),
     });
 
-    if (!result.ok) {
+    if (!response.ok) {
       return NextResponse.json(
-        { error: `Home Assistant returned ${result.status}` },
-        { status: result.status }
+        { error: `Home Assistant returned ${response.status}` },
+        { status: response.status }
       );
     }
 
