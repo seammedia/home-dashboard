@@ -6,7 +6,8 @@ A Next.js dashboard for controlling Home Assistant smart home devices, deployed 
 
 - Control Philips Hue lights (on/off, brightness)
 - Room-based organization with bento grid layout
-- "Good Night" button to turn off all lights
+- "Good Night" button to turn off all lights and sleep Apple TV
+- Apple TV power control (on/off via TV tab)
 - Google Calendar integration (via iCal)
 - Real-time status updates
 - Mobile-friendly responsive design
@@ -103,13 +104,22 @@ The current setup has several security issues that need to be resolved before in
                                                         [Docker/OrbStack]
                                                               |
                                             [Philips Hue Bridge] (direct or via proxy)
-                                            [RTSP Proxy :8554] --> [Tapo Camera :554]
+                                            [RTSP Proxy :8554] --> [Tapo C200 Garage :554]
+                                            [RTSP Proxy :8555] --> [Tapo C510W Driveway :554]
+                                            [atvremote] --> [Apple TV 4K (10.0.0.20)]
 ```
 
 **Camera stream path:**
 ```
 Tapo C200 (10.0.0.38:554) --> socat (Mac:8554) --> HA generic camera --> HA API proxy
+Tapo C510W (10.0.0.39:554) --> socat (Mac:8555) --> HA generic camera --> HA API proxy
 --> Cloudflare Tunnel --> Next.js API route (/api/camera/[id]) --> Browser <img> tag
+```
+
+**Apple TV control path:**
+```
+Browser --> /api/appletv/sleep --> Cloudflare Tunnel --> HA shell_command
+--> atvremote (Companion protocol) --> Apple TV (10.0.0.20)
 ```
 
 **PTZ control path:**
@@ -137,7 +147,13 @@ docker run -d \
 
 **Note:** The config volume path changed when moving from laptop (`/Users/clawd/...`) to desktop (`/Users/heathmaes/...`). Update accordingly.
 
-### Camera Setup (TP-Link Tapo C200)
+### Camera Setup
+
+Two Tapo cameras are configured:
+- **Garage:** Tapo C200 at `10.0.0.38` (socat proxy on port 8554)
+- **Driveway:** Tapo C510W at `10.0.0.39` (socat proxy on port 8555)
+
+#### Garage Camera (Tapo C200)
 
 The Tapo C200 is a pan/tilt WiFi camera at IP `10.0.0.38` (static IP set in Tapo app).
 
@@ -227,6 +243,22 @@ curl -X POST \
 ```
 
 Directions: `pan` = LEFT/RIGHT, `tilt` = UP/DOWN
+
+#### Driveway Camera (Tapo C510W)
+
+The Tapo C510W is an outdoor pan/tilt WiFi camera at IP `10.0.0.39` (static IP set in Tapo app). Same setup pattern as the Garage camera.
+
+**socat proxy:** Port 8555 on Mac host forwards to camera port 554.
+
+```bash
+socat TCP-LISTEN:8555,reuseaddr,fork TCP:10.0.0.39:554 &
+```
+
+**LaunchAgent:** `~/Library/LaunchAgents/com.tapo.driveway.proxy.plist`
+
+**HA entities:**
+- Generic Camera: `camera.host_docker_internal_2` (snapshots via `host.docker.internal:8555`)
+- ONVIF: `camera.driveway_camera_mainstream` (PTZ on port 2020)
 
 #### HACS (Home Assistant Community Store)
 
@@ -374,9 +406,21 @@ scene: !include scenes.yaml
 
 # Camera integration - added via UI (generic camera integration)
 stream:
+
+# Apple TV control via atvremote (bypasses broken mDNS-dependent HA integration)
+shell_command:
+  appletv_sleep: 'atvremote -s 10.0.0.20 --storage none --companion-credentials "CRED" turn_off'
+  appletv_wake: 'atvremote -s 10.0.0.20 --storage none --companion-credentials "CRED" turn_on'
+
+# Apple TV power state sensor (polled every 30s)
+command_line:
+  - sensor:
+      name: Apple TV Power
+      command: 'atvremote -s 10.0.0.20 ... power_state 2>/dev/null || echo Unknown'
+      scan_interval: 30
 ```
 
-**Note:** Camera entities are configured via the HA UI, not YAML. Newer HA versions do not support `platform: generic` in YAML.
+**Note:** Camera entities are configured via the HA UI, not YAML. The full `atvremote` credentials are in the actual `configuration.yaml` - abbreviated here. See the Apple TV Integration section for details.
 
 ### Vercel Environment Variables
 
@@ -422,12 +466,14 @@ The dashboard uses **snapshot polling** - not continuous streaming. Every 3 seco
 
 ### Camera Entities in Home Assistant
 
-| Entity | Integration | Purpose |
-|--------|-------------|---------|
-| `camera.host_docker_internal` | Generic Camera | Snapshot proxy (RTSP via socat) |
-| `camera.garage_camera_mainstream` | ONVIF | PTZ controls |
+| Entity | Integration | Camera | Purpose |
+|--------|-------------|--------|---------|
+| `camera.host_docker_internal` | Generic Camera | Garage (C200) | Snapshot proxy (RTSP via socat :8554) |
+| `camera.garage_camera_mainstream` | ONVIF | Garage (C200) | PTZ controls |
+| `camera.host_docker_internal_2` | Generic Camera | Driveway (C510W) | Snapshot proxy (RTSP via socat :8555) |
+| `camera.driveway_camera_mainstream` | ONVIF | Driveway (C510W) | PTZ controls |
 
-The generic camera entity provides snapshot images. The ONVIF entity provides pan/tilt motor control. Both connect to the same physical camera.
+Each physical camera has two HA entities: Generic Camera for snapshots, ONVIF for PTZ motor control.
 
 ### PTZ Controls
 
@@ -451,6 +497,9 @@ This is more universal and works even when the `light` domain services aren't av
 | `/api/calendar` | GET | Proxies Google Calendar iCal feed |
 | `/api/camera/[id]` | GET | Proxies camera snapshot from HA (adds auth server-side) |
 | `/api/camera/[id]/ptz` | POST | Sends PTZ commands to camera via HA ONVIF service |
+| `/api/appletv/state` | GET | Returns Apple TV power state from HA sensor |
+| `/api/appletv/sleep` | POST | Triggers `shell_command.appletv_sleep` to sleep the Apple TV |
+| `/api/appletv/wake` | POST | Triggers `shell_command.appletv_wake` to wake the Apple TV |
 
 **PTZ request body:** `{ "direction": "up" | "down" | "left" | "right" }`
 
@@ -482,21 +531,70 @@ This is more universal and works even when the `light` domain services aren't av
 - **Known issues:** Firmware updates occasionally break HA integration temporarily
 - **Tip:** Set static IP for camera in router/app to avoid connection issues
 
+### Solar/Battery Cameras Don't Support RTSP
+- Battery-powered cameras (Tapo C410, C420, C425, Reolink Argus series) do NOT support RTSP or ONVIF
+- They disable continuous streaming protocols to save battery life
+- They are cloud-only and cannot be integrated with HA locally
+- Always use wired/mains-powered cameras for local HA integration
+
 ### Swann EVO WiFi Cameras (Not Recommended)
 - Standalone WiFi models (like SWIFI-SE2KPT) primarily work through the Swann Security App
 - RTSP/ONVIF support is mainly documented for NVR-based systems, not standalone WiFi cameras
 - Risky for local Home Assistant integration - likely cloud-dependent
 
-### Apple TV Integration
-- Requires proper network access from Home Assistant container
-- With OrbStack, would need proxy setup similar to Hue Bridge
-- The integration can only control media playback, NOT power off the TV hardware
-- Apple TV sleep mode uses ~0.5W, so powering off isn't necessary
+### Apple TV Integration (atvremote - NOT the HA integration)
 
-### Smart Plugs and TVs
-- Not recommended to hard-cut power to Apple TV/smart TVs regularly
-- Can interrupt updates and cause minor flash storage wear
-- Better to use sleep commands or let devices sleep naturally
+The HA Apple TV integration does NOT work reliably from Docker. Use `atvremote` instead.
+
+**Why the HA integration fails:**
+- The Apple TV integration uses mDNS (multicast DNS) to discover and maintain connection
+- Docker containers in OrbStack cannot receive mDNS multicast packets
+- After any HA restart or integration reload, it tries to rediscover via mDNS and fails
+- HA logs show: `"Multicast is broken or device offline, trying unicast PTR queries"` then `"Failed to find device"`
+- The integration was set up via the HA web UI (which uses the host's mDNS), but can never reconnect after a restart
+- Config entry reload through the Cloudflare tunnel also hangs/times out, making remote reload impossible
+
+**Working solution - atvremote CLI:**
+- `atvremote` is part of pyatv, already installed in the HA container
+- It supports unicast scan with `-s IP_ADDRESS` which bypasses mDNS entirely
+- Uses stored Companion protocol credentials for authentication
+- Reliable power state reading, sleep, and wake commands
+
+**HA configuration (`configuration.yaml`):**
+```yaml
+shell_command:
+  appletv_sleep: 'atvremote -s 10.0.0.20 --storage none --companion-credentials "CRED" turn_off'
+  appletv_wake: 'atvremote -s 10.0.0.20 --storage none --companion-credentials "CRED" turn_on'
+
+command_line:
+  - sensor:
+      name: Apple TV Power
+      command: 'atvremote -s 10.0.0.20 --storage none --companion-credentials "CRED" power_state 2>/dev/null || echo Unknown'
+      scan_interval: 30
+      value_template: >
+        {% if 'On' in value %}on{% elif 'Off' in value %}off{% else %}unknown{% endif %}
+```
+
+The Companion credentials are stored in HA's config entry at `/config/.storage/core.config_entries` under the `apple_tv` domain, key `"4"` (Companion protocol). These were created during the initial pairing via the HA web UI.
+
+**Dashboard integration:**
+- TV tab shows live power state (polled every 10s via `sensor.apple_tv_power`)
+- Power toggle button calls `/api/appletv/sleep` or `/api/appletv/wake`
+- Good Night button includes Apple TV sleep in `turnOffAll()`
+- API routes trigger `shell_command.appletv_sleep` / `shell_command.appletv_wake` via HA
+
+**Apple TV details:**
+- Device: Apple TV 4K (3rd gen) - "Lounge Room"
+- IP: `10.0.0.20`
+- MAC: `D2:57:A7:0E:F1:BE`
+- Protocols: AirPlay (7000), Companion (dynamic port), RAOP (7000)
+
+**Key learnings:**
+- The HA Apple TV integration is useless in Docker without host network mDNS
+- `atvremote` with unicast `-s` flag and Companion credentials is 100% reliable
+- Shell commands via HA return instantly through the Cloudflare tunnel (no timeout issues)
+- The `command_line` sensor polls every 30s for accurate state tracking
+- The HA integration can be left installed (it was used for initial pairing to get credentials) but should not be relied on for ongoing control
 
 ### Google Calendar Integration
 
@@ -584,6 +682,16 @@ Free Cloudflare tunnels get a random URL each time. When it changes:
 - The API config flow requires multi-step exchanges with precise timing (especially for Hue button press)
 - When in doubt, use `http://localhost:8123` and add integrations through Settings - Devices & Services
 
+### Apple TV Not Responding
+1. Check the sensor is reading state: `curl -H "Authorization: Bearer TOKEN" http://localhost:8123/api/states/sensor.apple_tv_power`
+2. Test atvremote directly: `docker exec homeassistant atvremote -s 10.0.0.20 --storage none --companion-credentials "CRED" power_state`
+3. If atvremote can't connect, verify the Apple TV is on the network: `docker exec homeassistant ping -c 2 10.0.0.20`
+4. If credentials expired, re-pair via HA web UI (Settings - Devices & Services - Apple TV) then extract new Companion credentials from `/config/.storage/core.config_entries`
+5. After updating credentials, update `configuration.yaml` shell_command and command_line sections, then restart HA
+
+### Apple TV Shows Wrong State
+The `command_line` sensor polls every 30 seconds. After pressing the power button, wait up to 30s for the state to update in the dashboard. The dashboard polls the API every 10s, and the sensor updates every 30s, so worst case is ~40s delay.
+
 ### Calendar Shows "No upcoming events"
 1. Verify the iCal URL is correct in `/src/app/api/calendar/route.ts`
 2. Use the **secret** iCal address, not public embed URL
@@ -598,6 +706,13 @@ home-dashboard/
 ├── src/
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── appletv/
+│   │   │   │   ├── state/
+│   │   │   │   │   └── route.ts   # Apple TV power state (GET)
+│   │   │   │   ├── sleep/
+│   │   │   │   │   └── route.ts   # Apple TV sleep (POST)
+│   │   │   │   └── wake/
+│   │   │   │       └── route.ts   # Apple TV wake (POST)
 │   │   │   ├── calendar/
 │   │   │   │   └── route.ts       # Google Calendar iCal proxy
 │   │   │   └── camera/
@@ -607,9 +722,9 @@ home-dashboard/
 │   │   │               └── route.ts # PTZ control (POST)
 │   │   ├── layout.tsx
 │   │   ├── globals.css              # Glassmorphism styles, animations
-│   │   └── page.tsx                 # Main dashboard (PIN, cameras, lights, PTZ)
+│   │   └── page.tsx                 # Main dashboard (PIN, cameras, lights, TV, PTZ)
 │   └── lib/
-│       ├── homeassistant.ts         # HA API integration
+│       ├── homeassistant.ts         # HA API integration + turnOffAll
 │       └── useHomeAssistant.ts      # React hook for HA
 ├── public/
 │   └── rooms/                       # Room layout images
@@ -624,7 +739,9 @@ home-dashboard/
 |---------|----------|---------|
 | Home Assistant | Docker (OrbStack) | Smart home hub |
 | Hue Bridge | 10.0.0.2 (direct or via proxy) | Philips Hue lights (13 lights, 11 devices) |
-| Tapo C200 | 10.0.0.38 (static IP) | Garage camera (RTSP + ONVIF) |
+| Tapo C200 | 10.0.0.38 (socat :8554) | Garage camera (RTSP + ONVIF PTZ) |
+| Tapo C510W | 10.0.0.39 (socat :8555) | Driveway camera (RTSP + ONVIF PTZ) |
+| Apple TV 4K | 10.0.0.20 | Lounge Room TV (controlled via atvremote) |
 | Cloudflare Tunnel | Mac | Remote HTTPS access |
 | Vercel | Cloud | Dashboard hosting |
 | Google Calendar | Cloud (iCal) | Family calendar events |
@@ -637,7 +754,7 @@ home-dashboard/
 docker ps                                    # Home Assistant container
 pgrep cloudflared                            # Cloudflare tunnel
 lsof -i :80 -i :443 | grep socat            # Hue Bridge proxies
-lsof -i :8554 | grep socat                  # Camera RTSP proxy
+lsof -i :8554 -i :8555 | grep socat          # Camera RTSP proxies (garage + driveway)
 
 # Restart Home Assistant
 docker restart homeassistant
@@ -663,6 +780,13 @@ curl -s -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8123/api/states |
 # List all light entities
 curl -s -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8123/api/states | \
   python3 -c "import json,sys; [print(e['entity_id'],e['state']) for e in json.load(sys.stdin) if e['entity_id'].startswith('light.')]"
+
+# Apple TV power state (via atvremote)
+curl -s -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8123/api/states/sensor.apple_tv_power | python3 -c "import json,sys; print(json.load(sys.stdin)['state'])"
+
+# Sleep/wake Apple TV via HA shell command
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8123/api/services/shell_command/appletv_sleep
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8123/api/services/shell_command/appletv_wake
 
 # Check Hue Bridge reachability from container
 docker exec homeassistant nc -zv 10.0.0.2 443
