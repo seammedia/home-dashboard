@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Home, Lightbulb, Flower2, DoorOpen, Wind, Camera, Blinds,
+  Home, Lightbulb, Flower2, DoorOpen, Wind, Camera, Blinds, Tv,
   Moon, Thermometer, Droplets, Sofa, Bed, Baby, Gamepad2, UtensilsCrossed,
   ChevronRight, ChevronLeft, Settings, Wifi, WifiOff, Loader2, Monitor,
   Power, WifiOff as CameraOff, Lock, Delete,
@@ -15,6 +15,7 @@ import { saveConfig, getConfig, testConnection } from '@/lib/homeassistant';
 const TABS = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'lights', label: 'Lights', icon: Lightbulb },
+  { id: 'tv', label: 'TV', icon: Tv },
   { id: 'garden', label: 'Garden', icon: Flower2 },
   { id: 'doors', label: 'Doors', icon: DoorOpen },
   { id: 'air', label: 'Air', icon: Wind },
@@ -305,6 +306,8 @@ export default function Dashboard() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [fullscreenCamera, setFullscreenCamera] = useState<{ id: string; name: string } | null>(null);
+  const [appletvState, setAppletvState] = useState<'on' | 'off' | 'unknown' | 'loading'>('loading');
+  const [appletvLoading, setAppletvLoading] = useState(false);
 
   // Check if already authenticated via localStorage
   useEffect(() => {
@@ -395,6 +398,39 @@ export default function Dashboard() {
     const interval = setInterval(fetchCalendar, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Poll Apple TV state
+  const fetchAppletvState = useCallback(async () => {
+    try {
+      const response = await fetch('/api/appletv/state');
+      if (response.ok) {
+        const data = await response.json();
+        setAppletvState(data.state as 'on' | 'off' | 'unknown');
+      }
+    } catch {
+      setAppletvState('unknown');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAppletvState();
+    const interval = setInterval(fetchAppletvState, 10000);
+    return () => clearInterval(interval);
+  }, [fetchAppletvState]);
+
+  const handleAppletvPower = async () => {
+    setAppletvLoading(true);
+    try {
+      const endpoint = appletvState === 'on' ? '/api/appletv/sleep' : '/api/appletv/wake';
+      await fetch(endpoint, { method: 'POST' });
+      // Wait a moment for the command to take effect, then refresh state
+      setTimeout(fetchAppletvState, 3000);
+    } catch (error) {
+      console.error('Apple TV power error:', error);
+    } finally {
+      setTimeout(() => setAppletvLoading(false), 3000);
+    }
+  };
 
   // Format calendar event for display
   const formatCalendarEvent = (event: CalendarEvent, index: number) => {
@@ -1114,6 +1150,53 @@ export default function Dashboard() {
             <div className="glass-card p-8 text-center">
               <Wind className="w-12 h-12 text-gray-600 mx-auto mb-3" />
               <p className="text-gray-400">No air monitors configured yet</p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'tv' && (
+          <div className="space-y-4">
+            <h1 className="text-2xl font-bold text-white">TV</h1>
+            <div className="glass-card p-6 rounded-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                    appletvState === 'on' ? 'bg-blue-500/20' : 'bg-gray-800'
+                  }`}>
+                    <Tv className={`w-7 h-7 ${appletvState === 'on' ? 'text-blue-400' : 'text-gray-500'}`} />
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold text-lg">Lounge Room</p>
+                    <p className="text-sm text-gray-400">Apple TV 4K</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                    appletvState === 'on' ? 'bg-green-500/20 text-green-400' :
+                    appletvState === 'off' ? 'bg-gray-700/50 text-gray-400' :
+                    'bg-yellow-500/20 text-yellow-400'
+                  }`}>
+                    {appletvState === 'loading' ? 'Checking...' :
+                     appletvState === 'on' ? 'On' :
+                     appletvState === 'off' ? 'Off' : 'Unknown'}
+                  </span>
+                  <button
+                    onClick={handleAppletvPower}
+                    disabled={appletvLoading || appletvState === 'loading'}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                      appletvState === 'on'
+                        ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                        : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                    } disabled:opacity-50`}
+                  >
+                    {appletvLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Power className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

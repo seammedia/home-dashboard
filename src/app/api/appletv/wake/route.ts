@@ -9,9 +9,7 @@ export async function POST() {
   }
 
   try {
-    // Trigger shell_command.appletv_sleep which uses atvremote with Companion
-    // credentials to directly control the Apple TV (bypasses broken HA integration)
-    const response = await fetch(`${HA_URL}/api/services/shell_command/appletv_sleep`, {
+    const response = await fetch(`${HA_URL}/api/services/shell_command/appletv_wake`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${HA_TOKEN}`,
@@ -28,7 +26,7 @@ export async function POST() {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error('Apple TV sleep error:', error);
-    return NextResponse.json({ error: 'Failed to sleep Apple TV' }, { status: 502 });
+    console.error('Apple TV wake error:', error);
+    return NextResponse.json({ error: 'Failed to wake Apple TV' }, { status: 502 });
   }
 }
