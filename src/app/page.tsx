@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { 
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
   Home, Lightbulb, Flower2, DoorOpen, Wind, Camera, Blinds,
   Moon, Thermometer, Droplets, Sofa, Bed, Baby, Gamepad2, UtensilsCrossed,
   ChevronRight, ChevronLeft, Settings, Wifi, WifiOff, Loader2, Monitor,
-  Power
+  Power, WifiOff as CameraOff, Lock, Delete,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import { useHomeAssistant } from '@/lib/useHomeAssistant';
 import { saveConfig, getConfig, testConnection } from '@/lib/homeassistant';
@@ -136,13 +137,91 @@ interface CalendarEvent {
   location?: string;
 }
 
-// Camera feeds (placeholder)
+// Camera feeds
 const CAMERAS = [
-  { id: 'driveway', name: 'Driveway' },
-  { id: 'backyard', name: 'Backyard' },
-  { id: 'front', name: 'Front Door' },
-  { id: 'garage', name: 'Garage' },
+  { id: 'driveway', name: 'Driveway', entityId: 'camera.driveway' as string | null, ptz: true },
+  { id: 'garage', name: 'Garage', entityId: 'camera.garage' as string | null, ptz: true },
+  { id: 'backyard', name: 'Backyard', entityId: null as string | null, ptz: false },
+  { id: 'front', name: 'Front Door', entityId: null as string | null, ptz: false },
 ];
+
+// Live camera feed component with snapshot polling
+function CameraFeed({ cameraId, size = 'sm' }: { cameraId: string; size?: 'sm' | 'lg' }) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const prevUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const fetchSnapshot = async () => {
+      try {
+        const response = await fetch(`/api/camera/${cameraId}?t=${Date.now()}`);
+        if (!response.ok) throw new Error('Failed');
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+
+        if (mounted) {
+          setImageUrl(url);
+          // Revoke the previous URL to prevent memory leaks
+          if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
+          prevUrlRef.current = url;
+          setError(false);
+          setLoading(false);
+        } else {
+          URL.revokeObjectURL(url);
+        }
+      } catch {
+        if (mounted) {
+          setError(true);
+          setLoading(false);
+        }
+      }
+
+      if (mounted) {
+        timeoutId = setTimeout(fetchSnapshot, 3000);
+      }
+    };
+
+    fetchSnapshot();
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
+    };
+  }, [cameraId]);
+
+  const iconSize = size === 'lg' ? 'w-12 h-12' : 'w-8 h-8';
+
+  if (loading) {
+    return (
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+        <Loader2 className={`${iconSize} text-gray-500 animate-spin`} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex flex-col items-center justify-center gap-1">
+        <Camera className={`${iconSize} text-red-400/60`} />
+        <p className="text-[10px] text-red-400/60">Offline</p>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageUrl || ''}
+      alt="Camera feed"
+      className="absolute inset-0 w-full h-full object-cover"
+    />
+  );
+}
 
 // Light tile component for bento grid
 function LightTile({ 
@@ -206,7 +285,14 @@ function LightTile({
   );
 }
 
+const DASHBOARD_PIN = '11017261';
+const PIN_STORAGE_KEY = 'home-dashboard-authenticated';
+
 export default function Dashboard() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [greeting, setGreeting] = useState('');
@@ -218,6 +304,31 @@ export default function Dashboard() {
   const [configStatus, setConfigStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(true);
+  const [fullscreenCamera, setFullscreenCamera] = useState<{ id: string; name: string } | null>(null);
+
+  // Check if already authenticated via localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(PIN_STORAGE_KEY);
+    if (saved === 'true') setIsAuthenticated(true);
+    setCheckingAuth(false);
+  }, []);
+
+  // Auto-submit when 8 digits entered
+  useEffect(() => {
+    if (pinInput.length === DASHBOARD_PIN.length) {
+      if (pinInput === DASHBOARD_PIN) {
+        setIsAuthenticated(true);
+        setPinError(false);
+        localStorage.setItem(PIN_STORAGE_KEY, 'true');
+      } else {
+        setPinError(true);
+        setTimeout(() => {
+          setPinInput('');
+          setPinError(false);
+        }, 600);
+      }
+    }
+  }, [pinInput]);
 
   // Home Assistant integration
   const { 
@@ -349,6 +460,85 @@ export default function Dashboard() {
   const currentRoom = selectedRoom ? ROOMS.find(r => r.id === selectedRoom) : null;
   const currentRoomLights = selectedRoom ? getLightsForRoom(selectedRoom) : [];
 
+  // PIN pad handler
+  const handlePinDigit = (digit: string) => {
+    if (pinInput.length < DASHBOARD_PIN.length) {
+      setPinInput(prev => prev + digit);
+    }
+  };
+
+  const handlePinDelete = () => {
+    setPinInput(prev => prev.slice(0, -1));
+    setPinError(false);
+  };
+
+  // Show loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-mesh flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+      </div>
+    );
+  }
+
+  // PIN lock screen
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-mesh flex items-center justify-center p-4">
+        <div className="w-full max-w-xs flex flex-col items-center gap-8">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
+              <Lock className="w-8 h-8 text-cyan-400" />
+            </div>
+            <h1 className="text-xl font-semibold text-white">Home Dashboard</h1>
+            <p className="text-sm text-gray-400">Enter PIN to continue</p>
+          </div>
+
+          {/* PIN dots */}
+          <div className="flex gap-3">
+            {Array.from({ length: DASHBOARD_PIN.length }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                  pinError
+                    ? 'bg-red-400'
+                    : i < pinInput.length
+                    ? 'bg-cyan-400 scale-110'
+                    : 'bg-white/20'
+                } ${pinError ? 'animate-shake' : ''}`}
+              />
+            ))}
+          </div>
+
+          {/* Number pad */}
+          <div className="grid grid-cols-3 gap-4 w-full">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((key) => (
+              <div key={key || 'empty'} className="flex justify-center">
+                {key === '' ? (
+                  <div className="w-18 h-18" />
+                ) : key === 'del' ? (
+                  <button
+                    onClick={handlePinDelete}
+                    className="w-18 h-18 rounded-full flex items-center justify-center text-gray-400 hover:bg-white/10 active:bg-white/20 transition-colors"
+                  >
+                    <Delete className="w-6 h-6" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handlePinDigit(key)}
+                    className="w-18 h-18 rounded-full bg-white/10 hover:bg-white/15 active:bg-white/25 flex items-center justify-center text-2xl font-light text-white transition-colors"
+                  >
+                    {key}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-mesh flex flex-col">
       {/* Settings Modal */}
@@ -406,6 +596,76 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Fullscreen Camera View */}
+      {fullscreenCamera && (() => {
+        const cam = CAMERAS.find(c => c.id === fullscreenCamera.id);
+        const hasPtz = cam?.ptz ?? false;
+
+        const sendPtz = async (direction: string) => {
+          try {
+            await fetch(`/api/camera/${fullscreenCamera.id}/ptz`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ direction }),
+            });
+          } catch (err) {
+            console.error('PTZ error:', err);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black z-50 flex flex-col">
+            <div className="flex items-center justify-between p-4">
+              <button
+                onClick={() => setFullscreenCamera(null)}
+                className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+                <span className="text-sm">Back</span>
+              </button>
+              <h2 className="text-white font-medium">{fullscreenCamera.name}</h2>
+              <div className="w-16" />
+            </div>
+            <div className="flex-1 relative">
+              <CameraFeed cameraId={fullscreenCamera.id} size="lg" />
+
+              {/* PTZ Controls */}
+              {hasPtz && (
+                <div className="absolute bottom-6 right-6 flex flex-col items-center gap-1">
+                  <button
+                    onClick={() => sendPtz('up')}
+                    className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white/80 hover:text-white hover:bg-black/70 active:scale-95 transition-all"
+                  >
+                    <ChevronUp className="w-6 h-6" />
+                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => sendPtz('left')}
+                      className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white/80 hover:text-white hover:bg-black/70 active:scale-95 transition-all"
+                    >
+                      <ChevronLeft className="w-6 h-6" />
+                    </button>
+                    <div className="w-12 h-12" />
+                    <button
+                      onClick={() => sendPtz('right')}
+                      className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white/80 hover:text-white hover:bg-black/70 active:scale-95 transition-all"
+                    >
+                      <ChevronRight className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => sendPtz('down')}
+                    className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white/80 hover:text-white hover:bg-black/70 active:scale-95 transition-all"
+                  >
+                    <ChevronDown className="w-6 h-6" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Room Detail View - Bento Layout */}
       {selectedRoom && currentRoom && (
@@ -744,10 +1004,18 @@ export default function Dashboard() {
               </div>
               <div className="grid grid-cols-4 gap-3">
                 {CAMERAS.map((camera) => (
-                  <div key={camera.id} className="glass-card aspect-video rounded-xl overflow-hidden relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-                      <Camera className="w-8 h-8 text-gray-600" />
-                    </div>
+                  <div
+                    key={camera.id}
+                    className={`glass-card aspect-video rounded-xl overflow-hidden relative ${camera.entityId ? 'cursor-pointer' : ''}`}
+                    onClick={() => camera.entityId && setFullscreenCamera({ id: camera.id, name: camera.name })}
+                  >
+                    {camera.entityId ? (
+                      <CameraFeed cameraId={camera.id} size="sm" />
+                    ) : (
+                      <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                        <Camera className="w-8 h-8 text-gray-600" />
+                      </div>
+                    )}
                     <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-1">
                       <p className="text-[10px] text-white truncate">{camera.name}</p>
                     </div>
@@ -855,10 +1123,18 @@ export default function Dashboard() {
             <h1 className="text-2xl font-bold text-white">Cameras</h1>
             <div className="grid grid-cols-2 gap-4">
               {CAMERAS.map((camera) => (
-                <div key={camera.id} className="glass-card aspect-video rounded-xl overflow-hidden relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-                    <Camera className="w-12 h-12 text-gray-600" />
-                  </div>
+                <div
+                  key={camera.id}
+                  className={`glass-card aspect-video rounded-xl overflow-hidden relative ${camera.entityId ? 'cursor-pointer' : ''}`}
+                  onClick={() => camera.entityId && setFullscreenCamera({ id: camera.id, name: camera.name })}
+                >
+                  {camera.entityId ? (
+                    <CameraFeed cameraId={camera.id} size="lg" />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                      <Camera className="w-12 h-12 text-gray-600" />
+                    </div>
+                  )}
                   <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-2">
                     <p className="text-sm text-white">{camera.name}</p>
                   </div>
